@@ -1,0 +1,3902 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>RW Map Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:    #080d18;
+  --ink1:   #0e1525;
+  --ink2:   #141e30;
+  --ink3:   #1b2640;
+  --line:   #253047;
+  --dim:    #445070;
+  --sub:    #6a80a8;
+  --body:   #b8cae8;
+  --head:   #dce8ff;
+  --hi:     #00e5d4;
+  --hi2:    #0099ff;
+  --ok:     #00e676;
+  --warn:   #ffab40;
+  --err:    #ff5252;
+  --purple: #ce93d8;
+  --r:      10px;
+  --touch:  52px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --hdr:    48px;
+  --steps:  38px;
+  --foot:   60px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  background: var(--ink);
+  color: var(--body);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ── APP SHELL ── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ── HEADER ── */
+header {
+  height: var(--hdr);
+  background: var(--ink1);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 14px;
+  gap: 0;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 50;
+}
+header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hi) 40%, var(--hi2) 60%, transparent);
+  opacity: .4;
+}
+.wordmark {
+  font-size: .88rem;
+  font-weight: 800;
+  color: var(--head);
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.wordmark em { color: var(--hi); font-style: normal; }
+
+.tab-bar { display: flex; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; gap: 0; }
+.tab-bar::-webkit-scrollbar { display: none; }
+
+.tab-btn {
+  flex-shrink: 0;
+  padding: 0 9px;
+  height: var(--hdr);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: .73rem;
+  font-weight: 700;
+  color: var(--dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+  letter-spacing: 0;
+  transition: color .15s, border-color .15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.tab-btn.active { color: var(--hi); border-bottom-color: var(--hi); }
+.tab-btn:active { color: var(--head); }
+
+.header-status {
+  flex-shrink: 0;
+  padding: 0 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .62rem;
+  color: var(--dim);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: none;
+}
+@media (min-width: 480px) {
+  .header-status { display: block; }
+}
+
+/* ── STEP BAR ── */
+#step-bar {
+  height: var(--steps);
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--ink1);
+  border-bottom: 1px solid var(--line);
+  padding: 0 4px;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+#step-bar::-webkit-scrollbar { display: none; }
+
+.step-btn {
+  flex-shrink: 0;
+  padding: 0 10px;
+  height: 100%;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .65rem;
+  font-weight: 700;
+  color: var(--dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: .02em;
+  transition: color .15s, border-color .15s;
+  touch-action: manipulation;
+}
+.step-btn.active { color: var(--hi); border-bottom-color: var(--hi); }
+.step-btn.done   { color: var(--ok); border-bottom-color: var(--ok); }
+.step-btn:disabled { opacity: .3; pointer-events: none; }
+
+/* ── CANVAS AREA ── */
+/* Canvas strip — height capped, width always full */
+#canvas-wrap {
+  background: #040810;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  max-height: 44dvh;
+}
+
+/* Map container always fills full width */
+#map-container {
+  position: relative;
+  width: 100%;
+}
+
+/* Canvas: 1px/cell internally, CSS scales to fill container */
+#map-canvas, #overlay-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+#map-canvas {
+  cursor: crosshair;
+  touch-action: none;
+}
+#overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Map size hint */
+#map-size-hint {
+  position: absolute;
+  top: 6px; left: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .6rem;
+  color: rgba(0,229,212,.6);
+  pointer-events: none;
+  z-index: 5;
+  background: rgba(8,13,24,.7);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,229,212,.2);
+}
+
+/* Canvas toolbar */
+#canvas-toolbar {
+  position: absolute;
+  top: 8px; right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 10;
+}
+.ctool-btn {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,229,212,.25);
+  background: rgba(8,13,24,.85);
+  color: var(--body);
+  font-size: 1rem;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  font-family: 'IBM Plex Mono', monospace;
+  transition: background .15s, border-color .15s;
+}
+.ctool-btn:active {
+  background: rgba(0,229,212,.2);
+  border-color: var(--hi);
+  color: var(--hi);
+}
+
+/* ── CONTROLS ── */
+#controls {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 13px calc(var(--foot) + var(--safe-b) + 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ── CARD ── */
+.card {
+  background: var(--ink2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 13px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card h2 {
+  font-size: .92rem;
+  font-weight: 800;
+  color: var(--head);
+  letter-spacing: -.01em;
+}
+.card p {
+  font-size: .8rem;
+  color: var(--sub);
+  line-height: 1.55;
+}
+
+/* Section label — mono uppercase */
+.section-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* ── PRESET GRID ── */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 7px;
+}
+.preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  background: var(--ink3);
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--body);
+  min-height: 58px;
+  max-height: 80px;
+  touch-action: manipulation;
+  transition: border-color .15s, background .15s;
+}
+.preset-btn:active { border-color: var(--hi); background: color-mix(in srgb, var(--hi) 8%, var(--ink3)); }
+.pe { font-size: 1.25rem; line-height: 1; }
+.pn { font-size: .6rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .02em; }
+
+/* ── SEED GRID ── */
+#seed-grid {
+  display: grid;
+  grid-template-columns: repeat(5,1fr);
+  gap: 5px;
+}
+.seed-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1.5px solid var(--line);
+  cursor: pointer;
+  min-height: 36px;
+  max-height: 72px;
+  touch-action: manipulation;
+  transition: background .1s, border-color .1s;
+}
+#seed-grid {
+  display: grid;
+  grid-template-columns: repeat(5,1fr);
+  gap: 5px;
+  max-width: 360px;
+}
+.seed-cell.on  { background: var(--hi); border-color: var(--hi); }
+.seed-cell.off { background: var(--ink); }
+
+/* ── FORM ── */
+.ctrl-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .65rem;
+  color: var(--dim);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+input[type="number"], select {
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--head);
+  padding: 9px 11px;
+  font-size: .88rem;
+  font-family: 'IBM Plex Mono', monospace;
+  width: 100%;
+  -webkit-appearance: none;
+  min-height: 44px;
+  transition: border-color .15s;
+}
+input:focus, select:focus { outline: none; border-color: var(--hi); }
+select { cursor: pointer; }
+
+/* Range */
+.range-row { display: flex; flex-direction: column; gap: 6px; }
+.range-header { display: flex; justify-content: space-between; align-items: center; font-size: .8rem; color: var(--sub); }
+.range-val { color: var(--hi); font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+input[type="range"] { width: 100%; accent-color: var(--hi); cursor: pointer; height: 20px; }
+
+/* ── BUTTONS ── */
+.btn {
+  padding: 13px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--body);
+  background: var(--ink3);
+  width: 100%;
+  touch-action: manipulation;
+  transition: opacity .15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 50px;
+}
+.btn:disabled { opacity: .35; pointer-events: none; }
+.btn:active:not(:disabled) { opacity: .72; }
+
+.btn-primary {
+  background: color-mix(in srgb, var(--hi) 15%, var(--ink3));
+  border-color: var(--hi);
+  color: var(--hi);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--hi) 20%, transparent);
+}
+.btn-green  {
+  background: color-mix(in srgb, var(--ok) 12%, var(--ink3));
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.btn-red    {
+  background: color-mix(in srgb, var(--err) 12%, var(--ink3));
+  border-color: var(--err);
+  color: var(--err);
+}
+.btn-yellow {
+  background: color-mix(in srgb, var(--warn) 12%, var(--ink3));
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.btn-row { display: flex; gap: 7px; }
+.btn-row .btn { flex: 1; }
+
+/* ── TOGGLE ── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--ink3);
+  border-radius: 8px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+}
+.toggle-row span { font-size: .85rem; color: var(--body); font-weight: 600; }
+.toggle { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track {
+  position: absolute; inset: 0;
+  background: var(--line);
+  border-radius: 13px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.toggle input:checked + .toggle-track { background: var(--hi); }
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px; left: 3px;
+  transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+.toggle input:checked + .toggle-track::after { transform: translateX(18px); }
+
+/* ── MODE TABS ── */
+.mode-tabs {
+  display: flex;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  gap: 0;
+}
+.mode-tab {
+  flex: 1;
+  padding: 10px 6px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: .8rem;
+  font-weight: 700;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--line);
+  color: var(--dim);
+  cursor: pointer;
+  transition: .15s;
+  text-align: center;
+  touch-action: manipulation;
+}
+.mode-tab:last-child { border-right: none; }
+.mode-tab.active {
+  background: color-mix(in srgb, var(--hi) 12%, transparent);
+  color: var(--hi);
+}
+
+/* ── POSITION LIST ── */
+.pos-list { display: flex; flex-wrap: wrap; gap: 5px; min-height: 28px; }
+.pos-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .68rem;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--ink3);
+  border: 1px solid var(--line);
+}
+.pos-empty { font-size: .78rem; color: var(--dim); }
+
+/* ── PROGRESS ── */
+.progress-wrap { display: flex; flex-direction: column; gap: 5px; }
+.progress-track { background: var(--ink3); border-radius: 3px; overflow: hidden; height: 5px; }
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--hi), var(--ok));
+  width: 0%;
+  transition: width .3s;
+  border-radius: 3px;
+}
+
+/* ── FOOTER NAV ── */
+footer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 50;
+  background: var(--ink1);
+  border-top: 1px solid var(--line);
+  padding: 10px 13px;
+  padding-bottom: max(10px, var(--safe-b));
+  display: flex;
+  gap: 8px;
+  height: auto;
+  align-items: center;
+}
+footer .btn { flex: 1; min-height: 44px; }
+
+/* ── QUICK PAGE ── */
+#quick-page { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+#quick-page.active { display: flex; }
+#quick-canvas-wrap {
+  background: #040810;
+  border-bottom: 1px solid var(--line);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  height: 28dvh;
+  min-height: 110px;
+  flex-shrink: 0;
+}
+#quick-canvas { display: block; image-rendering: pixelated; max-width: 100%; }
+#quick-controls {
+  flex: 1;
+  overflow-y: auto;
+  padding: 13px 13px calc(var(--foot) + var(--safe-b) + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── BRIDGE WARN ── */
+.bridge-warn {
+  font-size: .82rem;
+  color: var(--err);
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--err) 30%, transparent);
+}
+.bridge-warn a { color: var(--hi); }
+
+/* ── IMPORT MODAL ── */
+#import-modal {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(4,8,16,.8);
+  z-index: 200;
+  align-items: flex-end;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+#import-modal.show { display: flex; }
+.modal-box {
+  background: var(--ink1);
+  border: 1px solid var(--line);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding-bottom: calc(18px + var(--safe-b));
+  animation: slideUp .25s cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-header { display: flex; align-items: center; justify-content: space-between; }
+.modal-header h2 { font-size: .95rem; font-weight: 700; color: var(--head); }
+.modal-close {
+  background: var(--ink3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--sub);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+.modal-close:active { color: var(--hi); }
+.drop-zone {
+  border: 2px dashed var(--line);
+  border-radius: var(--r);
+  padding: 30px 16px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  background: var(--ink);
+}
+.drop-zone:active {
+  border-color: var(--hi);
+  background: color-mix(in srgb, var(--hi) 5%, var(--ink));
+}
+.drop-icon { font-size: 2.2rem; }
+.drop-text { font-size: .82rem; color: var(--sub); text-align: center; }
+.drop-file { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; color: var(--hi); word-break: break-all; }
+.import-msg { font-size: .8rem; padding: 10px 12px; border-radius: 8px; }
+.import-msg.ok      { background: color-mix(in srgb,var(--ok) 8%, transparent); color: var(--ok); }
+.import-msg.err     { background: color-mix(in srgb,var(--err) 8%, transparent); color: var(--err); }
+.import-msg.loading { background: color-mix(in srgb,var(--warn) 8%, transparent); color: var(--warn); }
+.import-info {
+  font-size: .78rem; color: var(--sub);
+  background: var(--ink3); border-radius: 8px; padding: 12px;
+}
+.import-info strong { color: var(--head); display: block; margin-bottom: 5px; }
+.import-info ul { padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
+.import-info code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .7rem;
+  background: rgba(255,255,255,.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* ── ACTIVE TILESET MODAL ── */
+#active-ts-modal {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(4,8,16,.8);
+  z-index: 200;
+  align-items: flex-end;
+  backdrop-filter: blur(6px);
+}
+#active-ts-modal.show { display: flex; }
+#active-ts-list { display: flex; flex-direction: column; gap: 8px; }
+.reg-item-btn {
+  min-height: 44px; padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--ink3);
+  color: var(--body);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: .15s;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+.reg-item-btn:active { border-color: var(--hi); color: var(--hi); }
+.reg-item-btn.primary-act { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--ink3)); }
+
+/* ── BRUSH SIZES ── */
+.brush-sizes { display: flex; gap: 6px; }
+.bs-btn {
+  width: 40px; height: 40px;
+  border-radius: 7px;
+  border: 1.5px solid var(--line);
+  background: var(--ink3);
+  color: var(--body);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  display: flex; align-items: center; justify-content: center;
+  transition: .15s;
+}
+.bs-btn.active { border-color: var(--hi); background: color-mix(in srgb, var(--hi) 15%, var(--ink3)); color: var(--hi); }
+
+/* ── EXPORT SUMMARY ── */
+.export-summary { font-size: .83rem; line-height: 2.1; color: var(--sub); }
+.export-summary b { color: var(--head); }
+
+/* ── UNIT / ITEM PANELS ── */
+.ts-select-row {
+  display: flex; gap: 6px; margin-bottom: 8px; align-items: center;
+}
+.ts-select-row select { flex: 1; }
+.tile-grid-mini {
+  display: flex; flex-wrap: wrap; gap: 3px;
+  min-height: 44px;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.selected-indicator {
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.sel-preview-canvas { image-rendering: pixelated; border-radius: 5px; flex-shrink: 0; }
+.unit-type-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; margin: 8px 0; }
+.unit-decl-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; background: var(--ink3); border: 1px solid var(--line); }
+.unit-add-form { background: var(--ink3); border-radius: 8px; padding: 12px; margin-top: 8px; border: 1px solid var(--line); }
+.unit-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.unit-form-label { font-family: 'IBM Plex Mono', monospace; font-size: .68rem; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+.unit-form-label input { margin-top: 4px; }
+
+/* ── BRIDGE SELECT ── */
+.bridge-ts-row {
+  display: flex; gap: 6px; margin-bottom: 10px; align-items: center;
+}
+.bridge-ts-row select { flex: 1; }
+.bridge-dir-row { display: flex; gap: 6px; }
+.bridge-dir-row .btn { flex: 1; min-height: 44px; padding: 0; font-size: .82rem; }
+.bridge-dir-row .btn.active { border-color: var(--hi); color: var(--hi); background: color-mix(in srgb, var(--hi) 10%, var(--ink3)); }
+
+/* ── PREVIEW MODAL ── */
+#preview-modal {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(4,8,16,.9);
+  z-index: 300;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  backdrop-filter: blur(8px);
+}
+#preview-modal.show { display: flex; }
+#preview-img { max-width: min(100%, 400px); max-height: min(62dvh, 400px); border-radius: 10px; display: block; box-shadow: 0 8px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08); }
+#preview-info { font-family: 'IBM Plex Mono', monospace; font-size: .72rem; color: var(--dim); }
+
+/* ── SIZE WARN ── */
+.size-warn { font-family: 'IBM Plex Mono', monospace; font-size: .7rem; color: var(--warn); }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed;
+  bottom: calc(var(--foot) + 10px + var(--safe-b));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink1);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 18px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .75rem;
+  opacity: 0;
+  transition: opacity .3s;
+  white-space: nowrap;
+  z-index: 300;
+  pointer-events: none;
+}
+#toast.show { opacity: 1; }
+
+/* ── LOADING ── */
+#loading {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(4,8,16,.8);
+  z-index: 500;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  backdrop-filter: blur(4px);
+}
+#loading.show { display: flex; }
+.spinner {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--hi);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-text { font-family: 'IBM Plex Mono', monospace; font-size: .82rem; color: var(--sub); }
+
+/* Quick gen seed grid */
+#q-seed-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 5px; }
+
+@media (min-width: 640px) {
+  /* canvas-wrap: no height cap — canvas is always fully visible */
+  .ctrl-grid { grid-template-columns: repeat(2,1fr); }
+  #seed-grid { max-width: 300px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ HEADER ══ -->
+<header>
+  <div class="wordmark">RW<em>·</em>Map</div>
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('wizard')" id="wizard-tab-btn">🗺 Wizard</button>
+    <button class="tab-btn" onclick="switchTab('quick')">⚡ Quick</button>
+    <button class="tab-btn" onclick="openImport()" id="import-tab-btn">📥 Import</button>
+    <a href="/tileset-wizard" target="_blank" class="tab-btn">🧙 Tileset</a>
+    <button class="tab-btn" onclick="openActiveTilesets()" id="active-ts-btn">🎨 Aktif</button>
+  </div>
+  <span class="header-status" id="status"></span>
+</header>
+
+<!-- ══ WIZARD MODE ══ -->
+<div id="wizard-page" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+
+  <!-- Step bar -->
+  <nav id="step-bar">
+    <button class="step-btn active" data-step="0">1·Coast</button>
+    <button class="step-btn" data-step="1" disabled>2·Hills</button>
+    <button class="step-btn" data-step="2" disabled>3·Height</button>
+    <button class="step-btn" data-step="3" disabled>4·CC</button>
+    <button class="step-btn" data-step="4" disabled>5·Res</button>
+    <button class="step-btn" data-step="5" disabled>6·Units</button>
+    <button class="step-btn" data-step="6" disabled>7·Export</button>
+  </nav>
+
+  <!-- Canvas -->
+  <div id="canvas-wrap">
+    <div id="map-size-hint"></div>
+    <div id="map-container">
+      <canvas id="map-canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+    </div>
+    <div id="canvas-toolbar">
+      <button class="ctool-btn" onclick="zoom(1.3)" title="Zoom In">+</button>
+      <button class="ctool-btn" onclick="zoom(1/1.3)" title="Zoom Out">−</button>
+      <button class="ctool-btn" onclick="zoomReset()" title="Fit">⊙</button>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div id="controls">
+
+    <!-- STEP 0: COASTLINE -->
+    <div class="step-panel" id="panel-0">
+      <div class="card">
+        <h2>1 · Coastline</h2>
+        <p>Pilih preset atau atur seed grid 5×5 secara manual.</p>
+
+        <div class="section-label">Preset</div>
+        <div class="preset-grid" id="preset-grid"></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <span class="section-label">Seed Grid</span>
+          <div style="display:flex;align-items:center;gap:5px">
+            <button onclick="resizeSeedGrid(S.gridSize-1)"
+              style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
+                     background:var(--ink3);color:var(--body);cursor:pointer;font-size:1rem">−</button>
+            <input id="grid-size-input" type="number" value="5" min="2"
+              style="width:54px;text-align:center;background:var(--ink);
+                     border:1px solid var(--hi);border-radius:6px;
+                     color:var(--hi);font-weight:700;font-size:.85rem;
+                     font-family:'IBM Plex Mono',monospace;padding:5px 6px;min-height:36px"
+              onchange="resizeSeedGrid(parseInt(this.value)||5)"
+              onkeydown="if(event.key==='Enter'){resizeSeedGrid(parseInt(this.value)||5);this.blur();}">
+            <button onclick="resizeSeedGrid(S.gridSize+1)"
+              style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
+                     background:var(--ink3);color:var(--body);cursor:pointer;font-size:1rem">+</button>
+            <span style="color:var(--dim);font-size:.72rem;font-family:'IBM Plex Mono',monospace">
+              ×<span id="grid-size-label">5</span>
+            </span>
+          </div>
+        </div>
+        <div id="seed-grid"></div>
+
+        <div class="ctrl-grid">
+          <label>Tinggi
+            <input type="number" id="c-h" value="160" min="40" max="2000" step="20"
+              oninput="updateSizeWarn(this.value,$('c-w').value,'size-warn-wiz')">
+          </label>
+          <label>Lebar
+            <input type="number" id="c-w" value="160" min="40" max="2000" step="20"
+              oninput="updateSizeWarn($('c-h').value,this.value,'size-warn-wiz')">
+          </label>
+          <div id="size-warn-wiz" class="size-warn" style="grid-column:1/-1;display:none"></div>
+          <label>Mirroring
+            <select id="c-mir" onchange="S.grid=applyMirroringToGrid(S.grid,this.value);buildSeedGrid()">
+              <option value="vertical">Vertical</option>
+              <option value="horizontal">Horizontal</option>
+              <option value="diagonal1">Diagonal 1</option>
+              <option value="diagonal2">Diagonal 2</option>
+              <option value="both">Both</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <label>Tileset
+            <select id="c-ts">
+              <option value="5">🌿 Jungle</option>
+              <option value="2">❄️ Winter</option>
+              <option value="3">🌋 Volcanic</option>
+              <option value="4">🏜️ Desert</option>
+              <option value="1">🌲 Forest</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="range-row">
+          <div class="range-header">
+            <span>Kehalusan Coastline</span>
+            <span class="range-val" id="smooth-val">3</span>
+          </div>
+          <input type="range" id="c-smooth" min="0" max="9" value="3"
+            oninput="document.getElementById('smooth-val').textContent=this.value">
+        </div>
+        <button class="btn btn-primary" id="btn-coast">⚡ Generate Coastline</button>
+      </div>
+    </div>
+
+    <!-- STEP 1: HILLS -->
+    <div class="step-panel" id="panel-1" style="display:none">
+      <div class="card">
+        <h2>2 · Hill / Bridge Drawing</h2>
+        <p>Gambar bukit, dinding, atau jembatan. Opsional.</p>
+
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="tab-brush"  onclick="setHillMode('brush')">🖌 Brush</button>
+          <button class="mode-tab"        id="tab-poly"   onclick="setHillMode('polygon')">⬡ Polygon</button>
+          <button class="mode-tab"        id="tab-bridge" onclick="setHillMode('bridge')">🌉 Bridge</button>
+        </div>
+
+        <!-- Brush -->
+        <div id="brush-ctrl">
+          <div class="section-label">Tipe</div>
+          <div class="btn-row" style="margin-bottom:8px">
+            <button class="btn" id="bw1" onclick="setBrushVal(1)">⬛ Dinding</button>
+            <button class="btn" id="bw2" onclick="setBrushVal(2)">◼ Tinggi</button>
+            <button class="btn" id="bw0" onclick="setBrushVal(0)">⬜ Hapus</button>
+          </div>
+          <div class="toggle-row">
+            <span>Mirror Brush</span>
+            <label class="toggle">
+              <input type="checkbox" id="brush-mirror" checked>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="section-label" style="margin-top:8px">Ukuran Brush</div>
+          <div class="brush-sizes" id="brush-sizes"></div>
+          <div class="btn-row" style="margin-top:8px">
+            <button class="btn" onclick="rpc('undo_brush').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">↩ Undo</button>
+            <button class="btn" onclick="rpc('redo_brush').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">↪ Redo</button>
+            <button class="btn btn-red" onclick="rpc('clear_brush_walls').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">🗑 Clear</button>
+          </div>
+        </div>
+
+        <!-- Polygon -->
+        <div id="poly-ctrl" style="display:none">
+          <p id="poly-hint" style="font-size:.8rem;color:var(--hi)">
+            Tap di peta untuk tambah titik. Tap titik pertama atau klik Tutup untuk selesaikan.
+          </p>
+          <div class="btn-row">
+            <button class="btn btn-green" onclick="closePoly()">✓ Tutup</button>
+            <button class="btn" onclick="cancelPoly()">✕ Batal</button>
+          </div>
+          <div class="btn-row" style="margin-top:6px">
+            <button class="btn" onclick="rpc('undo_polygons').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">↩ Undo</button>
+            <button class="btn" onclick="rpc('redo_polygons').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">↪ Redo</button>
+            <button class="btn btn-red" onclick="clearPolygons()">🗑 Clear</button>
+          </div>
+        </div>
+
+        <!-- Bridge -->
+        <div id="bridge-ctrl" style="display:none">
+          <div id="bridge-no-tileset-warn" class="bridge-warn" style="display:none;margin-bottom:8px">
+            ⚠️ Upload bridge tileset dulu.
+            <a href="/tileset-wizard" target="_blank">Buka Wizard →</a>
+          </div>
+
+          <div class="section-label" style="margin-bottom:6px">Tileset Bridge Aktif</div>
+          <div class="bridge-ts-row">
+            <select id="bridge-ts-select" onchange="switchActiveBridge(this.value)">
+              <option value="">— tidak ada —</option>
+            </select>
+            <button class="btn" onclick="refreshBridgeSelector()"
+              style="width:44px;flex-shrink:0;padding:0;font-size:1rem">↻</button>
+          </div>
+
+          <p style="font-size:.8rem;color:var(--sub)">Drag di atas tile <b>air</b> untuk gambar bridge.</p>
+
+          <div class="section-label" style="margin-top:4px">Mode</div>
+          <div class="btn-row" style="margin-bottom:8px">
+            <button class="btn" id="bridge-draw-btn"  onclick="setBridgeMode('draw')">🖊 Gambar</button>
+            <button class="btn" id="bridge-erase-btn" onclick="setBridgeMode('erase')">⬜ Hapus</button>
+          </div>
+
+          <div class="section-label">Arah</div>
+          <div class="bridge-dir-row" style="margin-bottom:8px">
+            <button class="btn active" id="bridge-dir-auto" onclick="setBridgeDir('auto')">🔄 Auto</button>
+            <button class="btn" id="bridge-dir-H" onclick="setBridgeDir('H')">↔ H</button>
+            <button class="btn" id="bridge-dir-V" onclick="setBridgeDir('V')">↕ V</button>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn" onclick="rpc('undo_bridge').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">↩ Undo</button>
+            <button class="btn" onclick="rpc('redo_bridge').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">↪ Redo</button>
+            <button class="btn btn-red" onclick="rpc('clear_bridge').then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()})">🗑 Clear</button>
+          </div>
+          <div id="bridge-stroke-info"
+            style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--dim);margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2: HEIGHT -->
+    <div class="step-panel" id="panel-2" style="display:none">
+      <div class="card">
+        <h2>3 · Height &amp; Ocean</h2>
+        <p>Atur level ketinggian daratan dan kedalaman laut.</p>
+        <div class="range-row">
+          <div class="range-header"><span>Level Ketinggian</span><span class="range-val" id="hv">7</span></div>
+          <input type="range" id="height-lvl" min="1" max="9" value="7" oninput="hv.textContent=this.value">
+        </div>
+        <div class="range-row">
+          <div class="range-header"><span>Level Laut</span><span class="range-val" id="ov">3</span></div>
+          <input type="range" id="ocean-lvl" min="0" max="5" value="3" oninput="ov.textContent=this.value">
+        </div>
+        <button class="btn btn-primary" id="btn-height">⛰️ Generate Height Map</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: CC -->
+    <div class="step-panel" id="panel-3" style="display:none">
+      <div class="card">
+        <h2>4 · Command Center</h2>
+        <p>Tempatkan CC untuk setiap pemain. Tap di peta untuk manual.</p>
+        <div class="range-row">
+          <div class="range-header"><span>Jumlah Pemain</span><span class="range-val" id="cv">4</span></div>
+          <input type="range" id="cc-num" min="2" max="10" value="4" oninput="cv.textContent=this.value">
+        </div>
+        <div class="toggle-row">
+          <span>Auto Mirror</span>
+          <label class="toggle"><input type="checkbox" id="cc-mir" checked><span class="toggle-track"></span></label>
+        </div>
+        <p style="font-size:.75rem;color:var(--hi)">Tap di peta untuk manual · Penomoran CC ditampilkan setelah ditempatkan</p>
+        <div id="cc-team-legend" style="font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--dim)">T1=Tim 1, T2=Tim 2, P1/P2=Pasangan</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-cc-rand">🎲 Random</button>
+          <button class="btn" id="btn-cc-undo">↩ Undo</button>
+          <button class="btn btn-red" id="btn-cc-clear">🗑</button>
+        </div>
+        <div class="section-label">Posisi CC</div>
+        <div class="pos-list" id="cc-list"><span class="pos-empty">Belum ada</span></div>
+      </div>
+    </div>
+
+    <!-- STEP 4: RESOURCE -->
+    <div class="step-panel" id="panel-4" style="display:none">
+      <div class="card">
+        <h2>5 · Resource</h2>
+        <p>Tempatkan resource di peta. Tap di peta untuk manual.</p>
+        <div class="range-row">
+          <div class="range-header"><span>Jumlah Resource</span><span class="range-val" id="rv">12</span></div>
+          <input type="range" id="res-num" min="4" max="40" value="12" oninput="rv.textContent=this.value">
+        </div>
+        <div class="toggle-row">
+          <span>Auto Mirror</span>
+          <label class="toggle"><input type="checkbox" id="res-mir" checked><span class="toggle-track"></span></label>
+        </div>
+        <p style="font-size:.75rem;color:var(--hi)">Tap di peta untuk tempatkan resource manual</p>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-res-rand">🎲 Random</button>
+          <button class="btn" id="btn-res-undo">↩ Undo</button>
+          <button class="btn btn-red" id="btn-res-clear">🗑</button>
+        </div>
+        <div class="section-label">Posisi Resource</div>
+        <div class="pos-list" id="res-list"><span class="pos-empty">Belum ada</span></div>
+      </div>
+    </div>
+
+    <!-- STEP 5: UNITS -->
+    <div class="step-panel" id="panel-5" style="display:none">
+      <div class="card" style="border-color:color-mix(in srgb,var(--purple) 30%,transparent)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <h2 style="flex:1">6 · Custom Units</h2>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:.62rem;
+            background:color-mix(in srgb,var(--purple) 12%,transparent);
+            color:var(--purple);padding:3px 9px;border-radius:8px;
+            border:1px solid color-mix(in srgb,var(--purple) 30%,transparent)">
+            🔧 Modder
+          </span>
+        </div>
+        <p>Pilih tile dari tileset aktif atau preset bawaan, lalu tap di peta.</p>
+
+        <a href="/tileset-wizard" target="_blank"
+          style="display:flex;align-items:center;gap:10px;padding:12px;
+                 border-radius:8px;text-decoration:none;
+                 border:1px solid color-mix(in srgb,var(--hi) 25%,transparent);
+                 background:color-mix(in srgb,var(--hi) 5%,transparent);color:var(--body)">
+          <span style="font-size:1.4rem">🧙</span>
+          <div>
+            <div style="font-size:.82rem;font-weight:700;color:var(--head)">Belum punya tileset? Setup dulu →</div>
+            <div style="font-size:.7rem;color:var(--sub)">Buka Tileset Wizard di tab baru</div>
+          </div>
+        </a>
+
+        <!-- Mode switch -->
+        <div style="display:flex;background:var(--ink);border:1px solid var(--line);border-radius:8px;overflow:hidden">
+          <button id="mode-btn-unit" onclick="setPlaceMode('unit')"
+            style="flex:1;padding:10px;border:none;font-family:'Space Grotesk',system-ui,sans-serif;
+                   font-size:.82rem;font-weight:700;cursor:pointer;
+                   background:color-mix(in srgb,var(--purple) 20%,transparent);
+                   color:var(--purple);border-right:1px solid var(--line);touch-action:manipulation">
+            🎮 Unit
+          </button>
+          <button id="mode-btn-item" onclick="setPlaceMode('item')"
+            style="flex:1;padding:10px;border:none;font-family:'Space Grotesk',system-ui,sans-serif;
+                   font-size:.82rem;font-weight:700;cursor:pointer;
+                   background:transparent;color:var(--dim);touch-action:manipulation">
+            🏗️ Item
+          </button>
+        </div>
+
+        <!-- Unit mode -->
+        <div id="unit-mode-content">
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <button class="btn" id="unit-src-registry" onclick="setUnitSource('registry')"
+              style="flex:1;font-size:.78rem;border-color:color-mix(in srgb,var(--purple) 40%,transparent)">📦 Registry</button>
+            <button class="btn" id="unit-src-preset" onclick="setUnitSource('preset')"
+              style="flex:1;font-size:.78rem">🎯 Preset</button>
+          </div>
+
+          <div id="unit-registry-panel">
+            <div class="ts-select-row">
+              <select id="unit-ts-select" onchange="loadUnitTiles()">
+                <option value="">— pilih tileset —</option>
+              </select>
+              <button class="btn" onclick="refreshUnitTilesets()"
+                style="width:44px;flex-shrink:0;padding:0;font-size:1rem">↻</button>
+            </div>
+            <div id="unit-tile-grid" class="tile-grid-mini">
+              <span style="font-size:.75rem;color:var(--dim);align-self:center">Pilih tileset di atas</span>
+            </div>
+          </div>
+
+          <div id="unit-preset-panel" style="display:none">
+            <div id="unit-declarations" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+            <button class="btn" id="btn-add-unit-decl"
+              style="border-color:color-mix(in srgb,var(--purple) 40%,transparent);color:var(--purple)">
+              ➕ Tambah Unit
+            </button>
+            <div id="unit-add-form" class="unit-add-form" style="display:none">
+              <div class="section-label" style="margin-bottom:8px">Unit Baru</div>
+              <div class="unit-form-grid">
+                <label class="unit-form-label">Nama
+                  <input type="text" id="decl-name" value="Victory Point" placeholder="nama unit">
+                </label>
+                <label class="unit-form-label">GID
+                  <input type="number" id="decl-gid" value="151" min="1">
+                </label>
+                <label class="unit-form-label">Emoji
+                  <input type="text" id="decl-emoji" value="⭐" maxlength="4">
+                </label>
+                <label class="unit-form-label">Warna
+                  <input type="color" id="decl-color" value="#facc15"
+                    style="height:44px;cursor:pointer;padding:4px">
+                </label>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary" id="btn-confirm-unit-decl" style="flex:1">✅ Simpan</button>
+                <button class="btn" onclick="$('unit-add-form').style.display='none'">Batal</button>
+              </div>
+            </div>
+            <div id="unit-type-grid" class="unit-type-grid"></div>
+          </div>
+
+          <div id="unit-selected-indicator" class="selected-indicator"
+            style="display:none;background:color-mix(in srgb,var(--purple) 8%,transparent);
+                   border:1px solid color-mix(in srgb,var(--purple) 30%,transparent)">
+            <canvas id="unit-sel-preview" width="40" height="40" class="sel-preview-canvas"
+              style="border:1px solid color-mix(in srgb,var(--purple) 30%,transparent)"></canvas>
+            <div>
+              <div id="unit-sel-label" style="font-size:.85rem;font-weight:700;color:var(--purple)">—</div>
+              <div id="unit-sel-sub"   style="font-size:.7rem;color:var(--dim)">—</div>
+            </div>
+          </div>
+
+          <div class="toggle-row">
+            <span>Auto Mirror</span>
+            <label class="toggle"><input type="checkbox" id="unit-mirror" checked><span class="toggle-track"></span></label>
+          </div>
+          <p style="font-size:.75rem;color:var(--hi);margin-top:4px">Tap di peta untuk tempatkan · Klik kanan untuk hapus</p>
+          <div class="btn-row" style="margin-top:6px">
+            <button class="btn" id="btn-unit-undo">↩ Undo</button>
+            <button class="btn btn-red" id="btn-unit-clear">🗑 Clear</button>
+          </div>
+          <div class="section-label" style="margin-top:8px">Posisi</div>
+          <div class="pos-list" id="unit-pos-list"><span class="pos-empty">Belum ada</span></div>
+        </div>
+
+        <!-- Item mode -->
+        <div id="item-mode-content" style="display:none">
+          <div class="ts-select-row">
+            <select id="item-ts-select" onchange="loadItemTiles()">
+              <option value="">— pilih tileset —</option>
+            </select>
+            <button class="btn" onclick="refreshItemTilesets()"
+              style="width:44px;flex-shrink:0;padding:0;font-size:1rem">↻</button>
+          </div>
+          <div id="item-tile-grid" class="tile-grid-mini">
+            <span style="font-size:.75rem;color:var(--dim);align-self:center">Pilih tileset di atas</span>
+          </div>
+          <div id="item-selected-indicator" class="selected-indicator"
+            style="display:none;background:color-mix(in srgb,var(--ok) 6%,transparent);
+                   border:1px solid color-mix(in srgb,var(--ok) 25%,transparent)">
+            <canvas id="item-sel-preview" width="40" height="40" class="sel-preview-canvas"
+              style="border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)"></canvas>
+            <div>
+              <div id="item-sel-label" style="font-size:.85rem;font-weight:700;color:var(--ok)">—</div>
+              <div id="item-sel-sub"   style="font-size:.7rem;color:var(--dim)">—</div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <span>Auto Mirror</span>
+            <label class="toggle"><input type="checkbox" id="item-mirror" checked><span class="toggle-track"></span></label>
+          </div>
+          <p style="font-size:.75rem;color:var(--hi);margin-top:4px">Tap di peta untuk tempatkan · Klik kanan untuk hapus</p>
+          <div class="btn-row" style="margin-top:6px">
+            <button class="btn" id="btn-item-undo" onclick="itemUndo()">↩ Undo</button>
+            <button class="btn btn-red" id="btn-item-clear" onclick="itemClear()">🗑 Clear</button>
+          </div>
+          <div class="section-label" style="margin-top:8px">Posisi</div>
+          <div class="pos-list" id="item-pos-list"><span class="pos-empty">Belum ada</span></div>
+        </div>
+        <button class="btn btn-ghost" id="btn-back-units" style="display:none" onclick="setPlaceMode('unit')">← Kembali ke Unit</button>
+      </div>
+    </div>
+
+    <!-- STEP 6: EXPORT -->
+    <div class="step-panel" id="panel-6" style="display:none">
+      <div class="card">
+        <h2>7 · Export Peta</h2>
+        <div id="exp-sum" class="export-summary"></div>
+        <div class="progress-wrap">
+          <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--sub)">
+            <span id="exp-prog">Siap</span>
+          </div>
+          <div class="progress-track"><div class="progress-bar" id="exp-bar"></div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-green" id="btn-export">💾 Export .tmx</button>
+          <button class="btn btn-yellow" id="btn-newmap">🗺 Peta Baru</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /controls -->
+
+  <!-- Footer nav -->
+  <footer>
+    <button class="btn" id="btn-back" disabled>← Back</button>
+    <button class="btn btn-primary" id="btn-next">Next →</button>
+  </footer>
+
+</div><!-- /wizard-page -->
+
+<!-- ══ QUICK MODE ══ -->
+<div id="quick-page">
+  <div id="quick-canvas-wrap">
+    <canvas id="quick-canvas"></canvas>
+  </div>
+  <div id="quick-controls">
+    <div class="card">
+      <h2>⚡ Quick Generate</h2>
+      <div class="preset-grid" id="q-preset-grid"></div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <span class="section-label">Seed</span>
+        <div style="display:flex;gap:5px">
+          <button onclick="resizeQSeedGrid(S.qGridSize-1)"
+            style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
+                   background:var(--ink3);color:var(--body);cursor:pointer">−</button>
+          <span style="font-size:.72rem;color:var(--dim);align-self:center;
+                 font-family:'IBM Plex Mono',monospace">×<span id="q-seed-label" style="display:none"></span></span>
+          <button onclick="resizeQSeedGrid(S.qGridSize+1)"
+            style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
+                   background:var(--ink3);color:var(--body);cursor:pointer">+</button>
+        </div>
+      </div>
+      <div id="q-seed-grid"></div>
+
+      <div class="ctrl-grid">
+        <label>Tinggi<input type="number" id="q-h" value="160" min="40" max="2000" step="20"
+          oninput="updateSizeWarn(this.value,$('q-w').value,'size-warn-q')"></label>
+        <label>Lebar<input type="number" id="q-w" value="160" min="40" max="2000" step="20"
+          oninput="updateSizeWarn($('q-h').value,this.value,'size-warn-q')"></label>
+        <div id="size-warn-q" class="size-warn" style="grid-column:1/-1;display:none"></div>
+        <label>Mirroring
+          <select id="q-mir">
+            <option value="vertical">Vertical</option>
+            <option value="horizontal">Horizontal</option>
+            <option value="diagonal1">Diagonal 1</option>
+            <option value="diagonal2">Diagonal 2</option>
+            <option value="both">Both</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label>Tileset
+          <select id="q-ts">
+            <option value="5">🌿 Jungle</option>
+            <option value="2">❄️ Winter</option>
+            <option value="3">🌋 Volcanic</option>
+            <option value="4">🏜️ Desert</option>
+            <option value="1">🌲 Forest</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="range-row">
+        <div class="range-header"><span>Pemain</span><span class="range-val" id="qpv">4</span></div>
+        <input type="range" id="q-players" min="2" max="10" value="4" oninput="qpv.textContent=this.value">
+      </div>
+      <div class="range-row">
+        <div class="range-header"><span>Resource</span><span class="range-val" id="qrv">12</span></div>
+        <input type="range" id="q-res" min="4" max="40" value="12" oninput="qrv.textContent=this.value">
+      </div>
+      <div class="range-row">
+        <div class="range-header"><span>Height Level</span><span class="range-val" id="qhv">7</span></div>
+        <input type="range" id="q-hlvl" min="1" max="9" value="7" oninput="qhv.textContent=this.value">
+      </div>
+
+      <div class="progress-wrap">
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--sub)">
+          <span id="q-step-text">Siap</span>
+        </div>
+        <div class="progress-track"><div class="progress-bar" id="q-bar"></div></div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:.72rem;text-align:right;color:var(--dim)" id="q-prog"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-quick-gen">⚡ Generate</button>
+        <button class="btn btn-green" id="btn-quick-dl" disabled>💾 Download</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PREVIEW MODAL ══ -->
+<div id="preview-modal">
+  <canvas id="preview-img"></canvas>
+  <div id="preview-info"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-green" id="btn-preview-dl">💾 Download</button>
+    <button class="btn" onclick="document.getElementById('preview-modal').classList.remove('show')">✕ Tutup</button>
+  </div>
+</div>
+
+<!-- ══ IMPORT MODAL ══ -->
+<div id="import-modal" onclick="if(event.target===this)closeImport()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>📥 Import Peta .tmx</h2>
+      <button class="modal-close" onclick="closeImport()">✕</button>
+    </div>
+    <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
+      <input type="file" id="file-input" accept=".tmx,text/xml,application/xml" style="display:none">
+      <div class="drop-icon">📁</div>
+      <div class="drop-text">Tap untuk pilih file .tmx</div>
+      <div class="drop-file" id="drop-file" style="display:none"></div>
+    </div>
+    <div class="import-msg" id="import-msg" style="display:none"></div>
+    <div class="import-info" id="import-options" style="display:none">
+      <strong>Opsi Import</strong>
+      <div class="ctrl-grid">
+        <label>Tinggi Output<input type="number" id="import-out-h" value="160" min="40"></label>
+        <label>Lebar Output<input type="number" id="import-out-w" value="160" min="40"></label>
+      </div>
+      <div id="size-presets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-import-all">⬇ Import Semua</button>
+        <button class="btn" id="btn-import-terrain">🌍 Terrain Saja</button>
+      </div>
+      <button class="btn" id="btn-do-import-terrain" style="display:none;margin-top:6px">
+        🌍 Import dengan Ukuran Ini
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ACTIVE TILESET MODAL ══ -->
+<div id="active-ts-modal" onclick="if(event.target===this)closeActiveTilesets()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>🎨 Tileset Aktif</h2>
+      <button class="modal-close" onclick="closeActiveTilesets()">✕</button>
+    </div>
+    <div id="active-ts-list"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="loading"><div class="spinner"></div><div id="loading-text">Memproses…</div></div>
+
+</div><!-- /app -->
+
+<script>
+"use strict";
+
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════
+// Colors for binary coastline preview (step 1 & 2): 0=water, 1/2=land
+// Coastline preview colors (approximating real RW tile colors)
+const COASTLINE_COLORS = {
+  "-2":"#04101f",  // deep ocean
+  "-1":"#071a3a",  // ocean
+  "0": "#0e3a6e",  // shallow water / coast water
+  "1": "#8fa866",  // land — muted sage green (closer to RW grass)
+  "2": "#c4a96a",  // sand/low land
+  "3": "#7d9e55",  // slightly higher land
+  "4": "#6b7c42",  // higher land
+  "5": "#5c6e38",  // stone/hill
+  "6": "#888880",  // snow/stone
+  "7": "#c8ccc8",  // snow
+};
+
+const HEIGHT_COLORS = {"-1":"#07152b","0":"#0e2952","1":"#1e6fad","2":"#c8a96e",
+  "3":"#4a8f3f","4":"#6b4226","5":"#2d4a1e","6":"#888","7":"#ddd","8":"#adf"};
+const WALL_COLOR  = "rgba(60,30,10,0.85)";   // Dinding — dark brown
+const WALL2_COLOR = "rgba(200,100,30,0.85)";  // Tinggi — orange-brown (clearly different)
+const CC_COLOR   = "rgba(56,189,248,0.85)";
+const RES_COLOR  = "rgba(52,211,153,0.85)";
+
+const PRESETS=[
+  {label:"Island",    e:"🏝️",g:[[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]]},
+  {label:"Continent", e:"🌍",g:[[1,1,1,1,1],[1,1,1,1,1],[1,1,1,1,0],[0,1,1,0,0],[0,0,1,0,0]]},
+  {label:"Archipelago",e:"🗺️",g:[[1,0,0,1,0],[0,0,1,0,1],[0,1,0,0,0],[1,0,0,1,0],[0,1,0,0,1]]},
+  {label:"Strait",    e:"🌊",g:[[1,1,0,1,1],[1,1,0,1,1],[1,0,0,0,1],[1,1,0,1,1],[1,1,0,1,1]]},
+  {label:"Peninsula", e:"🪨",g:[[1,1,1,1,1],[1,1,1,1,0],[1,1,1,0,0],[1,1,0,0,0],[1,0,0,0,0]]},
+  {label:"Inland Sea",e:"💧",g:[[1,1,1,1,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,1]]},
+];
+
+// ═══════════════════════════════════════════════════════════
+//  APP STATE
+// ═══════════════════════════════════════════════════════════
+const S = {
+  tab:"wizard", step:0, completed:-1, gridSize:5,
+  grid:[[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]],
+  snap:null, tmxBytes:null,
+  hillMode:"brush", brushVal:1, brushSize:3,
+  polygons:[], drawingPoly:null, polyIdCtr:1,
+  tilesets:{}, tileImgs:{}, tilesetLoaded:false,
+  bridgeImg:null, bridgeTilesetInfo:null,
+  bridgeImgs:{}, bridgeTsInfos:{}, activeBridge:"",
+  zoomScale:1, panX:0, panY:0,
+  animTimer:null, animFrames:[], animIdx:0,
+  quickTmx:null,
+  placeMode:"unit",   // "unit" | "item"  — active sub-mode for step 5
+};
+
+// ═══════════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════════
+const $  = id => document.getElementById(id);
+const iv = id => parseInt($( id).value,10);
+const sv = id => $( id).value;
+
+function setStatus(msg){ const s=$("status"); if(s) s.textContent=msg; }
+function toast(msg,d=2200){
+  const t=$("toast");t.textContent=msg;t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),d);}
+function showLoad(msg="Memproses…"){
+  const lt=$("loading-text"); if(lt) lt.textContent=msg;
+  $("loading")?.classList.add("show");
+}
+function hideLoad(){$("loading")?.classList.remove("show");}
+
+// ═══════════════════════════════════════════════════════════
+//  RPC CLIENT
+// ═══════════════════════════════════════════════════════════
+async function rpc(method, params={}){
+  const res=await fetch(`/rpc/${method}`,{method:"POST",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(params)});
+  const json=await res.json();
+  if(!json.ok) throw new Error(json.error||"RPC error");
+  return json.result;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TILESET LOADER
+// ═══════════════════════════════════════════════════════════
+async function loadTilesets(pattern){
+  S.tilesetLoaded=false;
+  S.tilesets={}; S.tileImgs={};
+  try{
+    const res=await fetch(`/tilesets/${pattern}`);
+    S.tilesets=await res.json();
+    await Promise.all(Object.entries(S.tilesets).map(([k,ts])=>new Promise(resolve=>{
+      const img=new Image();
+      img.onload=()=>{S.tileImgs[k]=img;resolve()};
+      img.onerror=resolve;
+      img.src="data:image/png;base64,"+ts.png;
+    })));
+    S.tilesetLoaded=true;
+  }catch(e){console.warn("Tileset load failed:",e)}
+}
+
+// Wait until all tileset images are truly decoded (important on mobile)
+async function loadTilesetsAndWait(pattern){
+  S.tilesetLoaded=false;
+  S.tilesets={}; S.tileImgs={};
+  try{
+    const res=await fetch(`/tilesets/${pattern}`);
+    S.tilesets=await res.json();
+    // Load all images and wait for each one with a proper onload promise
+    await Promise.all(Object.entries(S.tilesets).map(([k,ts])=>new Promise((resolve)=>{
+      const img=new Image();
+      img.onload=()=>{ S.tileImgs[k]=img; resolve(); };
+      img.onerror=()=>{ console.warn("Tileset image failed:",k); resolve(); };
+      img.src="data:image/png;base64,"+ts.png;
+      // Fallback timeout per image (3s on slow mobile)
+      setTimeout(()=>{ if(!S.tileImgs[k]) resolve(); }, 3000);
+    })));
+    S.tilesetLoaded=!!(S.tileImgs.ground);
+    console.log("Tilesets loaded:", Object.keys(S.tileImgs));
+  }catch(e){
+    console.warn("Tileset load failed:",e);
+  }
+}
+
+async function applyImportedTilesets(xmlStr){
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(xmlStr,"application/xml");
+  const result={};
+  const nameMap={"AutoLight":"ground","large-rock":"wall","export_items":"items","50pCommandCenter":"units"};
+  for(const ts of doc.querySelectorAll("tileset")){
+    const name=ts.getAttribute("name")||"";
+    const key=nameMap[name];
+    if(!key) continue;
+    const prop=ts.querySelector('property[name="embedded_png"]');
+    const raw=prop?.getAttribute("value")||prop?.textContent||"";
+    const png="".concat(...raw.split(/\s+/));
+    if(!png) continue;
+    const firstGid=parseInt(ts.getAttribute("firstgid")||"1");
+    const columns=parseInt(ts.getAttribute("columns")||"1");
+    const tileCount=parseInt(ts.getAttribute("tilecount")||"0");
+    const tileWidth=parseInt(ts.getAttribute("tilewidth")||"20");
+    const tileHeight=parseInt(ts.getAttribute("tileheight")||"20");
+    result[key]={name,firstGid,columns,tileCount,tileWidth,tileHeight,png};
+    const img=new Image();
+    await new Promise(r=>{img.onload=r;img.onerror=r;img.src="data:image/png;base64,"+png});
+    S.tileImgs[key]=img;
+    S.tilesets[key]=result[key];
+  }
+  if(Object.keys(result).length){
+    S.tilesetLoaded=true;redraw();
+  }
+  // tileset import via wizard
+  return {};
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS RENDERER
+// ═══════════════════════════════════════════════════════════
+function getCanvas(){ return $("map-canvas") }
+function getOverlay(){ return $("overlay-canvas") }
+function getCtx(){ return getCanvas().getContext("2d") }
+function getOvCtx(){ return getOverlay().getContext("2d") }
+
+let tileSize=2;
+
+// Canvas approach: 1px/cell in canvas data, CSS width:100% scales to display.
+// tileSize = display-px-per-cell, used only for hit-testing.
+
+function computeTileSize(w, h) {
+  const wrap = $("canvas-wrap");
+  const wrapW = wrap ? wrap.clientWidth : 300;
+  return (wrapW / w) * S.zoomScale;
+}
+
+function setupCanvas(w, h) {
+  if (!w || !h) return;
+  const cv = getCanvas(), ov = getOverlay();
+  if (!cv || !ov) return;
+
+  // Map canvas: 1px/cell (CSS scales up for display)
+  cv.width  = w;
+  cv.height = h;
+  // Overlay canvas: display resolution (tileSize px/cell) so CC text renders crisp
+  // tileSize is computed just after, so we use computeTileSize here first
+  const _ts = computeTileSize(w, h);
+  const dpr = window.devicePixelRatio || 1;
+  ov.width  = Math.round(w * _ts);
+  ov.height = Math.round(h * _ts);
+
+  // container width: 100% at zoom=1, scaled at zoom>1 (enables panning)
+  const mc   = $("map-container");
+  const wrap = $("canvas-wrap");
+  if (mc && wrap) {
+    if (S.zoomScale === 1) {
+      mc.style.width = "100%";
+      // Remove explicit pixel width to let CSS 100% work cleanly
+      mc.style.removeProperty && mc.style.removeProperty('width');
+      mc.style.width = "100%";
+    } else {
+      const baseW = wrap.clientWidth;
+      // Integer width prevents sub-pixel gaps between tiles
+      mc.style.width = Math.floor(baseW * S.zoomScale) + "px";
+    }
+  }
+
+  tileSize = computeTileSize(w, h); // px/cell for hit-testing
+
+  const hint = $("map-size-hint");
+  if (hint) hint.textContent = `${w}×${h}`;
+}
+
+function redraw(){
+  const snap=S.snap;
+  if(!snap) return;
+  const {width:w,height:h}=snap.meta;
+  setupCanvas(w,h);
+
+  const view=S.step<=1?"coastline":S.step===6&&snap.matrices.id_matrix?"final":"height";
+  const ctx=getCtx();
+  ctx.clearRect(0,0,getCanvas().width,getCanvas().height);
+
+  if(view==="coastline"&&snap.matrices.coastline_height_map){
+    renderHeightMap(ctx,snap.matrices.coastline_height_map,w,h,true);
+  }else if(view==="final"&&snap.matrices.id_matrix&&S.tilesetLoaded&&S.tileImgs.ground){
+    renderTileLayer(ctx,snap.matrices.id_matrix,w,h,"ground",true);
+    if(snap.matrices.items_matrix&&S.tileImgs.items)
+      renderTileLayer(ctx,snap.matrices.items_matrix,w,h,"items",false);
+    if(snap.matrices.units_matrix&&S.tileImgs.units)
+      renderTileLayer(ctx,snap.matrices.units_matrix,w,h,"units",false);
+  }else if(snap.matrices.height_map){
+    renderHeightMap(ctx,snap.matrices.height_map,w,h);
+  }else if(snap.matrices.coastline_height_map){
+    renderHeightMap(ctx,snap.matrices.coastline_height_map,w,h,true);
+  }
+
+  // Wall overlay
+  if(snap.matrices.wall_matrix) renderWallOverlay(ctx,snap.matrices.wall_matrix,w,h);
+
+  // Bridge overlay (shown on canvas during editing, before finalize)
+  if(snap.matrices.bridge_matrix&&S.bridgeImg)
+    renderBridgeOverlay(ctx,snap.matrices.bridge_matrix,w,h);
+  else if(snap.matrices.bridge_matrix)
+    renderBridgeFallback(ctx,snap.matrices.bridge_matrix,w,h);
+
+  // CC + Resource dots → overlay canvas at display resolution (1 overlay px = 1 screen px)
+  const ovCtx = getOvCtx();
+  ovCtx.clearRect(0,0,getOverlay().width,getOverlay().height);
+  if(S.step>=3) renderCCOverlay(ovCtx,snap,w,h,tileSize,tileSize);
+  if(S.step>=4) renderDots(ovCtx,snap.resource_positions,RES_COLOR,w,h,tileSize);
+
+  drawPolygonOverlay();
+}
+
+function renderHeightMap(ctx,mat,w,h,isCoastline=false,ts=1){
+  const data=mat.data;
+  const palette=isCoastline?COASTLINE_COLORS:HEIGHT_COLORS;
+  const bm=S.snap?.matrices?.bridge_matrix?.data;
+  for(let r=0;r<h;r++){
+    for(let c=0;c<w;c++){
+      const v=data[r*w+c];
+      ctx.fillStyle=(bm && bm[r*w+c]) ? "#888" : (palette[String(v)]||"#333");
+      ctx.fillRect(Math.round(c*ts),Math.round(r*ts),Math.ceil(ts),Math.ceil(ts));
+    }
+  }
+}
+
+function renderTileLayer(ctx,mat,w,h,key,isGround,ts=1){
+  const ts_info=S.tilesets[key];
+  const img=S.tileImgs[key];
+  if(!ts_info||!img) return;
+  const data=mat.data;
+  const ts=1; // canvas 1px/cell
+  const {columns,tileWidth,tileHeight}=ts_info;
+  // For ground: tile index is direct (TILE_ID_OFFSET is added on write, not stored in matrix)
+  // For items/units: value is GID, subtract firstGid to get tile index
+  const offset=isGround?0:ts_info.firstGid;
+  for(let r=0;r<h;r++){
+    for(let c=0;c<w;c++){
+      const gid=data[r*w+c];
+      if(gid<=0) continue;
+      const tileIdx=isGround?gid:gid-offset;
+      if(tileIdx<0||tileIdx>=ts_info.tileCount) continue;
+      const tRow=Math.floor(tileIdx/columns);
+      const tCol=tileIdx%columns;
+      ctx.drawImage(img,tCol*tileWidth,tRow*tileHeight,tileWidth,tileHeight,
+        Math.round(c*ts),Math.round(r*ts),Math.ceil(ts),Math.ceil(ts));
+    }
+  }
+}
+
+function renderWallOverlay(ctx,mat,w,h){
+  const data=mat.data; const ts=1; // canvas 1px/cell
+  for(let r=0;r<h;r++){
+    for(let c=0;c<w;c++){
+      const v=data[r*w+c];
+      if(!v) continue;
+      ctx.fillStyle=v===2?WALL2_COLOR:WALL_COLOR;
+      ctx.fillRect(Math.round(c*ts),Math.round(r*ts),Math.ceil(ts),Math.ceil(ts));
+    }
+  }
+}
+
+function renderBridgeOverlay(ctx,mat,w,h,ts=1){
+  const data=mat.data;
+  const ROT_FLAG=0xA0000000;
+  const gts  = S.tilesets && S.tilesets.ground;
+  const gimg = S.tileImgs && S.tileImgs.ground;
+  const hmMat = S.snap && S.snap.matrices && S.snap.matrices.height_map;
+
+  // AutoLight local IDs that are LAND (level>=2): IDs 37+ are land center tiles.
+  // Water tiles = local 0-30, shallow = 31-36 roughly. We only use tileset for land.
+  // Simpler: use the boosted height_map value to determine if we should draw land tile.
+
+  for(let r=0;r<h;r++){
+    for(let c=0;c<w;c++){
+      let gid=data[r*w+c];
+      if(!gid) continue;
+      const dx=Math.round(c*ts), dy=Math.round(r*ts);
+      const dw=Math.ceil(ts), dh=Math.ceil(ts);
+
+      // Step 1: paint solid land background using height_map (already boosted to >=2)
+      // Never use id_matrix here — it may still contain water tile IDs at bridge positions
+      const hv = hmMat ? hmMat.data[r*w+c] : 2;
+      const boostedHv = Math.max(hv, 2); // ensure always land color even if not yet boosted
+      let groundPainted = false;
+      if(gts && gimg){
+        // Map boosted height level to AutoLight grass center tile (local ID 37)
+        // Use grass (37) as safe neutral land tile under all bridge positions
+        const landLocalId = boostedHv>=3?40:37; // 40=soil, 37=grass
+        const gR=Math.floor(landLocalId/gts.columns), gC=landLocalId%gts.columns;
+        ctx.drawImage(gimg,gC*gts.tileWidth,gR*gts.tileHeight,gts.tileWidth,gts.tileHeight,dx,dy,dw,dh);
+        groundPainted=true;
+      }
+      if(!groundPainted){
+        const lc=['#c8a878','#c8a878','#c8a878','#8fba6a','#7a6040','#6a7050','#8a9090','#d0d8e0'];
+        ctx.fillStyle=lc[Math.max(0,Math.min(7,boostedHv+2))]||'#8fba6a';
+        ctx.fillRect(dx,dy,dw,dh);
+      }
+
+      // Draw bridge PNG on top
+      const rotated=(gid&ROT_FLAG)===ROT_FLAG;
+      const realGid=rotated?(gid&~ROT_FLAG):gid;
+      let info=null, img=null;
+      for(const name of Object.keys(S.bridgeTsInfos)){
+        const ti=S.bridgeTsInfos[name];
+        if(realGid>=ti.firstGid && realGid<ti.firstGid+ti.tileCount){info=ti;img=S.bridgeImgs[name];break;}
+      }
+      if(!info){info=S.bridgeTilesetInfo;img=S.bridgeImg;}
+      if(!info||!img) continue;
+      const localId=realGid-info.firstGid;
+      if(localId<0||localId>=info.tileCount) continue;
+      const tRow=Math.floor(localId/info.columns),tCol=localId%info.columns;
+      const sx=tCol*info.tileWidth, sy=tRow*info.tileHeight;
+      if(rotated){
+        ctx.save();ctx.translate(dx+dw/2,dy+dh/2);ctx.rotate(Math.PI/2);
+        ctx.drawImage(img,sx,sy,info.tileWidth,info.tileHeight,-dw/2,-dh/2,dw,dh);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img,sx,sy,info.tileWidth,info.tileHeight,dx,dy,dw,dh);
+      }
+    }
+  }
+}
+function renderBridgeFallbackCell(ctx,r,c,ts=1){
+  // Draw a neutral land color (sandy) so it doesn't appear as water blue
+  ctx.save(); ctx.globalAlpha=0.9; ctx.fillStyle="#c8a878";
+  ctx.fillRect(Math.round(c*ts),Math.round(r*ts),Math.ceil(ts),Math.ceil(ts));
+  ctx.restore();
+}
+
+function renderBridgeFallback(ctx,mat,w,h,ts=1){
+  // No bridge tileset: draw land-colored overlay over bridge positions
+  const data=mat.data;
+  const hmMat = S.snap?.matrices?.height_map;
+  ctx.save();
+  for(let r=0;r<h;r++){
+    for(let c=0;c<w;c++){
+      if(!data[r*w+c]) continue;
+      const hv = hmMat ? hmMat.data[r*w+c] : 1;
+      ctx.fillStyle = hv>=3?'#5a7a3a':hv>=2?'#8fba6a':'#c8a878';
+      ctx.fillRect(Math.round(c*ts),Math.round(r*ts),Math.ceil(ts),Math.ceil(ts));
+    }
+  }
+  ctx.restore();
+}
+
+// renderCCOverlay: draws CC boxes on canvas
+// coordTs = px/cell in canvas coordinate space (1 for main canvas, actual ts for thumbnails)
+// sizeTs  = display scale for box sizing (tileSize for main, same as coordTs for thumbnails)
+function renderCCOverlay(ctx, snap, w, h, coordTs, sizeTs){
+  sizeTs = (sizeTs !== undefined) ? sizeTs : coordTs;
+  const positions = snap.cc_positions||[];
+  if(!positions.length) return;
+  const um=snap.matrices?.units_matrix;
+  const umW=um?.shape?.[1]||w;
+
+  // coordTs = px per tile in THIS canvas space.
+  // For overlay (display res): coordTs=tileSize, so all sizes are real screen px.
+  // For preview/zip renders: coordTs=renderTS.
+  const dotDiam  = Math.max(2, coordTs * 1.5) * 2;  // dot diameter in canvas px
+  const boxSize  = Math.max(6, Math.round(dotDiam * 2.5));  // 2.5× dot
+  const radius   = Math.max(1, Math.round(boxSize * 0.28));
+  const fontSize = Math.max(4, Math.round(boxSize * 0.52));
+
+  ctx.save();
+  for(const[r,c] of positions){
+    let gid=0;
+    if(um&&um.data) gid=um.data[r*umW+c]||0;
+    const color=CC_PLAYER_COLORS[gid]||CC_COLOR;
+    const textColor=CC_TEXT_COLORS[gid]||"#000";
+    const num=CC_GID_NUM[gid]||"?";
+    const cx=Math.round((c+0.5)*coordTs);
+    const cy=Math.round((r+0.5)*coordTs);
+    const half=boxSize/2;
+    const x=cx-half, y=cy-half;
+
+    // Outer glow / drop shadow
+    ctx.shadowColor="rgba(0,0,0,0.75)";
+    ctx.shadowBlur=Math.max(2, boxSize*0.4);
+    ctx.shadowOffsetX=0; ctx.shadowOffsetY=Math.max(1, boxSize*0.12);
+
+    // Fill rounded rect
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    if(ctx.roundRect){
+      ctx.roundRect(x, y, boxSize, boxSize, radius);
+    } else {
+      // Polyfill for older browsers
+      ctx.moveTo(x+radius, y);
+      ctx.lineTo(x+boxSize-radius, y);
+      ctx.arcTo(x+boxSize, y, x+boxSize, y+radius, radius);
+      ctx.lineTo(x+boxSize, y+boxSize-radius);
+      ctx.arcTo(x+boxSize, y+boxSize, x+boxSize-radius, y+boxSize, radius);
+      ctx.lineTo(x+radius, y+boxSize);
+      ctx.arcTo(x, y+boxSize, x, y+boxSize-radius, radius);
+      ctx.lineTo(x, y+radius);
+      ctx.arcTo(x, y, x+radius, y, radius);
+      ctx.closePath();
+    }
+    ctx.fill();
+
+    // Border — crisp, semi-transparent white outline
+    ctx.shadowColor="transparent"; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+    ctx.strokeStyle="rgba(255,255,255,0.7)";
+    ctx.lineWidth=Math.max(0.8, boxSize*0.08);
+    ctx.stroke();
+
+    // Dark inner border for contrast
+    ctx.strokeStyle="rgba(0,0,0,0.45)";
+    ctx.lineWidth=Math.max(0.5, boxSize*0.05);
+    ctx.stroke();
+
+    // Number — render at 2× then draw scaled for sub-pixel crispness
+    ctx.font=`900 ${fontSize}px Arial, sans-serif`;
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    // Thin black halo (~20% font size) then fill — keeps number readable
+    ctx.lineJoin="round";
+    ctx.strokeStyle="rgba(0,0,0,0.95)";
+    ctx.lineWidth=Math.max(0.4, fontSize*0.22);
+    ctx.strokeText(String(num), cx, cy);
+    ctx.fillStyle=textColor;
+    ctx.fillText(String(num), cx, cy);
+  }
+  ctx.restore();
+  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+}
+
+// Player colors — exactly matching native Rusted Warfare
+// GID order: 101=1(green), 106=2(red), 102=3(blue), 107=4(yellow),
+//            103=5(cyan),  108=6(white),104=7(gray), 109=8(pink),
+//            105=9(orange),110=10(gold)
+const CC_PLAYER_COLORS = {
+  101:"#22c55e",  // 1 — Green
+  106:"#ef4444",  // 2 — Red
+  102:"#3b82f6",  // 3 — Blue
+  107:"#facc15",  // 4 — Yellow
+  103:"#0d9488",  // 5 — Teal
+  108:"#f1f5f9",  // 6 — White
+  104:"#94a3b8",  // 7 — Gray
+  109:"#f472b6",  // 8 — Pink
+  105:"#f97316",  // 9 — Orange
+  110:"#a855f7",  // 10 — Purple
+};
+const CC_TEXT_COLORS = {
+  101:"#000", 106:"#fff", 102:"#fff", 107:"#000",
+  103:"#fff", 108:"#000", 104:"#000", 109:"#000",
+  105:"#000", 110:"#fff",
+};
+const CC_GID_NUM = {
+  101:1,106:2,102:3,107:4,103:5,108:6,104:7,109:8,105:9,110:10
+};
+
+// renderCCBoxes — draws CC on main canvas (1px/cell coords, tileSize for sizing)
+function renderCCBoxes(ctx,snap,w,h){ renderCCOverlay(ctx,snap,w,h,1,tileSize); }
+
+function renderDots(ctx, positions, color, w, h, ts=1){
+  if(!positions||!positions.length) return;
+  ctx.fillStyle=color;
+  const r2=Math.max(1, ts*1.5);
+  for(const[r,c] of positions){
+    ctx.beginPath();
+    ctx.arc(Math.round((c+.5)*ts),Math.round((r+.5)*ts),r2,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  POLYGON OVERLAY
+// ═══════════════════════════════════════════════════════════
+function drawPolygonOverlay(){
+  const ov=getOverlay(); const ctx=getOvCtx();
+  ctx.clearRect(0,0,ov.width,ov.height);
+  // Redraw CC+dots since overlay was cleared
+  if(S.snap&&S.step>=3) renderCCOverlay(ctx,S.snap,S.snap.meta.width,S.snap.meta.height,tileSize,tileSize);
+  if(S.snap&&S.step>=4) renderDots(ctx,S.snap.resource_positions,RES_COLOR,S.snap.meta.width,S.snap.meta.height,tileSize);
+  if(S.hillMode!=="polygon") return;
+  const ts=tileSize; // overlay at display resolution
+
+  // Draw existing closed polygons
+  for(const poly of S.polygons){
+    if(!poly.closed||poly.vertices.length<2) continue;
+    ctx.beginPath();
+    ctx.strokeStyle="#f59e0b"; ctx.lineWidth=1.5; ctx.setLineDash([]);
+    const[r0,c0]=poly.vertices[0];
+    ctx.moveTo((c0+.5)*ts,(r0+.5)*ts);
+    for(let i=1;i<poly.vertices.length;i++){
+      const[ri,ci]=poly.vertices[i];
+      ctx.lineTo((ci+.5)*ts,(ri+.5)*ts);
+    }
+    ctx.closePath(); ctx.stroke();
+  }
+
+  // Draw current in-progress polygon
+  if(S.drawingPoly&&S.drawingPoly.vertices.length>0){
+    const verts=S.drawingPoly.vertices;
+    ctx.strokeStyle="#38bdf8"; ctx.lineWidth=2; ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    const[r0,c0]=verts[0];
+    ctx.moveTo((c0+.5)*ts,(r0+.5)*ts);
+    for(let i=1;i<verts.length;i++){
+      const[ri,ci]=verts[i];
+      ctx.lineTo((ci+.5)*ts,(ri+.5)*ts);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    // Draw vertex dots
+    ctx.fillStyle="#38bdf8";
+    for(const[r,c] of verts){
+      ctx.beginPath();
+      ctx.arc((c+.5)*ts,(r+.5)*ts,3,0,Math.PI*2);
+      ctx.fill();
+    }
+    // Highlight first vertex (close target)
+    if(verts.length>=3){
+      ctx.strokeStyle="#34d399"; ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc((verts[0][1]+.5)*ts,(verts[0][0]+.5)*ts,6,0,Math.PI*2);
+      ctx.stroke();
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ZOOM
+// ═══════════════════════════════════════════════════════════
+function zoom(factor){
+  S.zoomScale = Math.max(0.5, Math.min(8, S.zoomScale * factor));
+  redraw();
+}
+function zoomReset(){
+  S.zoomScale = 1;
+  const w = $("canvas-wrap");
+  if (w) { w.scrollLeft = 0; w.scrollTop = 0; }
+  redraw();
+}
+
+// Pinch-to-zoom on mobile
+let _pinchDist=0;
+function setupPinchZoom(){
+  const wrap=$("canvas-wrap"); if(!wrap) return;
+  wrap.addEventListener("touchstart",e=>{
+    if(e.touches.length===2){
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      _pinchDist=Math.sqrt(dx*dx+dy*dy);
+    }
+  },{passive:true});
+  wrap.addEventListener("touchmove",e=>{
+    if(e.touches.length===2){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      if(_pinchDist>0){
+        const factor=d/_pinchDist;
+        S.zoomScale=Math.max(.25,Math.min(8,S.zoomScale*factor));
+        redraw();
+      }
+      _pinchDist=d;
+    }
+  },{passive:false});
+  wrap.addEventListener("touchend",e=>{ if(e.touches.length<2) _pinchDist=0; },{passive:true});
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CUSTOM UNIT + ITEM PLACEMENT  (registry tile picker)
+// ═══════════════════════════════════════════════════════════
+
+// ── Shared tile picker state ────────────────────────────────
+const _picker = {
+  unit: { tsName: null, localId: null, firstgid: null, tileW: 20, tileH: 20 },
+  item: { tsName: null, localId: null, firstgid: null, tileW: 20, tileH: 20 },
+};
+
+// Legacy preset state (backward compat)
+let UNIT_TYPES = [];
+let S_unitGid  = 0;   // used only for preset mode
+
+const UNIT_PRESETS = [
+  {id:"cc_neutral",  gid:111, label:"CC Neutral",    emoji:"🏛️", color:"#94a3b8"},
+  {id:"vp",         gid:151, label:"Victory Point",  emoji:"⭐", color:"#facc15"},
+  {id:"watchtower", gid:152, label:"Watch Tower",    emoji:"🗼", color:"#60a5fa"},
+  {id:"ruin",       gid:153, label:"Ruin",           emoji:"🏚️", color:"#a16207"},
+];
+
+// ── Place mode switcher (unit vs item) ─────────────────────
+function setPlaceMode(mode) {
+  S.placeMode = mode;
+  const isUnit = mode === 'unit';
+
+  // Mode buttons
+  const mbu = $('mode-btn-unit'), mbi = $('mode-btn-item');
+  if (mbu) { mbu.style.background = isUnit ? 'rgba(167,139,250,.3)' : 'transparent'; mbu.style.color = isUnit ? '#a78bfa' : 'var(--muted)'; }
+  if (mbi) { mbi.style.background = isUnit ? 'transparent' : 'rgba(34,197,94,.25)'; mbi.style.color = isUnit ? 'var(--muted)' : '#4ade80'; }
+
+  // Panel visibility
+  const umc = $('unit-mode-content'), imc = $('item-mode-content');
+  if (umc) umc.style.display = isUnit ? '' : 'none';
+  if (imc) imc.style.display = isUnit ? 'none' : '';
+}
+
+
+function setUnitSource(src) {
+  const isReg = src === 'registry';
+  const urp = $('unit-registry-panel'), upp = $('unit-preset-panel');
+  const usr = $('unit-src-registry'),   usp = $('unit-src-preset');
+  if (urp) urp.style.display    = isReg ? '' : 'none';
+  if (upp) upp.style.display    = isReg ? 'none' : '';
+  if (usr) usr.style.background = isReg ? 'rgba(167,139,250,.2)' : '';
+  if (usp) usp.style.background = isReg ? '' : 'rgba(167,139,250,.2)';
+  if (isReg) refreshUnitTilesets();
+  else       buildUnitTypeGrid();
+}
+
+// ── Registry tile loader ────────────────────────────────────
+// Safe JSON fetch helper — returns null silently if server returns non-JSON (HTML 404 etc.)
+async function _fetchRegistryJSON(url) {
+  try {
+    const res = await fetch(url);
+    const ct  = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('application/json')) return null;
+    return await res.json();
+  } catch(e) {
+    // Network error or JSON parse error — backend not available
+    return null;
+  }
+}
+
+async function refreshUnitTilesets() {
+  const data = await _fetchRegistryJSON('/registry?type=unit');
+  const sel  = $('unit-ts-select');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— pilih tileset —</option>';
+  if (!data) return; // backend offline — leave empty, no warning
+  const entries = Object.entries(data.tilesets || {});
+  entries.forEach(([name, ts]) => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = `${name} (${ts.tilecount} tiles)`;
+    if (name === prev) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (!sel.value && entries.length) sel.value = entries[0][0];
+  if (sel.value) loadUnitTiles();
+}
+
+async function refreshItemTilesets() {
+  const data = await _fetchRegistryJSON('/registry?type=items');
+  const sel  = $('item-ts-select');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— pilih tileset —</option>';
+  if (!data) return; // backend offline — leave empty, no warning
+  const entries = Object.entries(data.tilesets || {});
+  entries.forEach(([name, ts]) => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = `${name} (${ts.tilecount} tiles)`;
+    if (name === prev) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (!sel.value && entries.length) sel.value = entries[0][0];
+  if (sel.value) loadItemTiles();
+}
+
+async function loadUnitTiles() {
+  const sel = $('unit-ts-select');
+  const name = sel?.value;
+  if (!name) return;
+  const gridEl = $('unit-tile-grid');
+  if (!gridEl) return;
+  await _loadTileGrid('unit', name, gridEl);
+}
+
+async function loadItemTiles() {
+  const sel = $('item-ts-select');
+  const name = sel?.value;
+  if (!name) return;
+  const gridEl = $('item-tile-grid');
+  if (!gridEl) return;
+  await _loadTileGrid('item', name, gridEl);
+}
+
+async function _loadTileGrid(role, tsName, gridEl) {
+  gridEl.innerHTML = '<span style="font-size:.75rem;color:var(--muted)">Memuat tiles…</span>';
+  try {
+    const res  = await fetch(`/registry/active-tiles?role=${role === 'unit' ? 'unit' : 'items'}`);
+    const ct   = res.headers.get('content-type')||'';
+    if(!res.ok||!ct.includes('application/json')){ gridEl.innerHTML=''; return; }
+    let   data = await res.json();
+    // If the selected tileset is not yet active, activate it first
+    if (data.error || data.name !== tsName) {
+      await fetch('/registry/activate', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name: tsName, role: role === 'unit' ? 'unit' : 'items' }),
+      });
+      const res2 = await fetch(`/registry/active-tiles?role=${role === 'unit' ? 'unit' : 'items'}`);
+      data = await res2.json();
+    }
+    if (data.error) throw new Error(data.error);
+
+    _picker[role].tsName   = data.name;
+    _picker[role].firstgid = data.firstgid;
+    _picker[role].tileW    = data.tilewidth;
+    _picker[role].tileH    = data.tileheight;
+    _picker[role].localId  = null;
+
+    _renderTileGrid(role, data, gridEl);
+  } catch(e) {
+    gridEl.innerHTML = `<span style="font-size:.75rem;color:#f87171">${e.message}</span>`;
+  }
+}
+
+function _renderTileGrid(role, data, gridEl) {
+  const ZOOM = 3;
+  const tw = data.tilewidth * ZOOM;
+  const th = data.tileheight * ZOOM;
+
+  gridEl.innerHTML = '';
+  gridEl.style.cssText = `display:flex;flex-wrap:wrap;gap:3px;
+    background:var(--surf2);border-radius:8px;padding:8px;margin-bottom:8px`;
+
+  data.tiles.forEach((b64, i) => {
+    const cell = document.createElement('div');
+    cell.style.cssText = `position:relative;width:${tw}px;height:${th}px;
+      cursor:pointer;border-radius:3px;border:2px solid transparent;
+      transition:border-color .1s,transform .1s;flex-shrink:0`;
+    cell.title = `Tile #${i}  (${data.name})`;
+
+    const img = document.createElement('img');
+    img.src    = `data:image/png;base64,${b64}`;
+    img.width  = tw; img.height = th;
+    img.style.cssText = 'display:block;image-rendering:pixelated';
+    cell.appendChild(img);
+
+    cell.onmouseenter = () => { if (_picker[role].localId !== i) cell.style.borderColor = '#4a90d9'; };
+    cell.onmouseleave = () => { if (_picker[role].localId !== i) cell.style.borderColor = 'transparent'; };
+
+    cell.onclick = () => {
+      // Deselect previous
+      gridEl.querySelectorAll('[data-tid]').forEach(c => {
+        c.style.borderColor = 'transparent'; c.style.transform = '';
+      });
+      _picker[role].localId = i;
+      cell.style.borderColor = role === 'unit' ? '#a78bfa' : '#4ade80';
+      cell.style.transform   = 'scale(1.1)';
+      _updateSelectedIndicator(role, b64, i, data);
+    };
+    cell.dataset.tid = i;
+    gridEl.appendChild(cell);
+  });
+}
+
+function _updateSelectedIndicator(role, b64, localId, data) {
+  const indEl     = $(role === 'unit' ? 'unit-selected-indicator' : 'item-selected-indicator');
+  const previewEl = $(role === 'unit' ? 'unit-sel-preview'        : 'item-sel-preview');
+  const labelEl   = $(role === 'unit' ? 'unit-sel-label'          : 'item-sel-label');
+  const subEl     = $(role === 'unit' ? 'unit-sel-sub'            : 'item-sel-sub');
+
+  const gid = data.firstgid + localId;
+  const img = new Image();
+  img.onload = () => {
+    const ctx = previewEl.getContext('2d');
+    ctx.clearRect(0, 0, 40, 40);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, 40, 40);
+  };
+  img.src = `data:image/png;base64,${b64}`;
+
+  labelEl.textContent = `${data.name}  #${localId}`;
+  subEl.textContent   = `GID ${gid}  (firstgid ${data.firstgid} + local ${localId})`;
+  indEl.style.display = 'flex';
+}
+
+// ── Map placement ────────────────────────────────────────────
+async function placeCustomUnit(r, c, isRight = false) {
+  if (!S.snap) return;
+  const mirrorOn = $('unit-mirror')?.checked !== false;
+
+  if (isRight) {
+    const res = await rpc('remove_custom_unit', {row: r, col: c});
+    if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderUnitPosList(); }
+    return;
+  }
+
+  let params;
+  if (_picker.unit.tsName && _picker.unit.localId !== null) {
+    // Registry tile picker
+    params = { tileset: _picker.unit.tsName, local_id: _picker.unit.localId,
+               row: r, col: c, no_mirror: !mirrorOn };
+  } else if (S_unitGid) {
+    // Legacy preset
+    params = { gid: S_unitGid, row: r, col: c, no_mirror: !mirrorOn };
+  } else {
+    return;   // nothing selected
+  }
+
+  const res = await rpc('place_custom_unit', params);
+  if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderUnitPosList(); }
+}
+
+async function placeCustomItem(r, c, isRight = false) {
+  if (!S.snap) return;
+  const mirrorOn = $('item-mirror')?.checked !== false;
+
+  if (isRight) {
+    const res = await rpc('remove_custom_item', {row: r, col: c});
+    if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderItemPosList(); }
+    return;
+  }
+
+  if (!_picker.item.tsName || _picker.item.localId === null) return;
+  const res = await rpc('place_custom_item', {
+    tileset: _picker.item.tsName, local_id: _picker.item.localId,
+    row: r, col: c, no_mirror: !mirrorOn,
+  });
+  if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderItemPosList(); }
+}
+
+async function itemUndo() {
+  const res = await rpc('undo_custom_item', {});
+  if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderItemPosList(); }
+}
+async function itemClear() {
+  const res = await rpc('clear_custom_items', {});
+  if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderItemPosList(); }
+}
+
+function renderUnitPosList() {
+  const el = $('unit-pos-list'); if (!el) return;
+  const units = S.snap?.matrices?.units_matrix?.data;
+  if (!units || !units.some(v => v > 110)) {
+    el.innerHTML = '<span class="pos-empty">Belum ada</span>'; return;
+  }
+  el.innerHTML = `<span style="font-size:.75rem;color:var(--muted)">${units.filter(v=>v>110).length} custom unit placed</span>`;
+}
+
+function renderItemPosList() {
+  const el = $('item-pos-list'); if (!el) return;
+  el.innerHTML = `<span style="font-size:.75rem;color:var(--muted)">(lihat peta)</span>`;
+}
+
+// ── Legacy preset helpers (unchanged interface) ─────────────
+function buildUnitTypeGrid() {
+  const wrap = $('unit-type-grid'); if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!UNIT_TYPES.length) {
+    wrap.innerHTML = '<p style="font-size:.78rem;color:var(--muted);grid-column:1/-1">Belum ada unit — tambahkan preset di bawah.</p>';
+    if (!$('unit-preset-row')) {
+      const row = document.createElement('div');
+      row.id = 'unit-preset-row';
+      row.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;margin-top:4px';
+      UNIT_PRESETS.forEach(p => {
+        const b = document.createElement('button');
+        b.style.cssText = `padding:5px 10px;border-radius:6px;border:1px solid ${p.color}44;background:${p.color}11;color:var(--text);cursor:pointer;font-size:.75rem`;
+        b.innerHTML = `${p.emoji} ${p.label}`;
+        b.onclick = () => { UNIT_TYPES.push({...p}); buildUnitTypeGrid(); };
+        row.appendChild(b);
+      });
+      wrap.after(row);
+    }
+    return;
+  }
+  $('unit-preset-row')?.remove();
+  UNIT_TYPES.forEach((ut, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn'; btn.id = 'ut-btn-' + i;
+    btn.style.cssText = `text-align:left;padding:10px;border-color:${ut.color}44`;
+    btn.innerHTML = `<span style="font-size:1.1rem">${ut.emoji}</span> <b style="font-size:.8rem">${ut.label}</b><br><span style="font-size:.68rem;color:var(--muted)">GID ${ut.gid}</span>`;
+    btn.onclick = () => {
+      S_unitGid = ut.gid;
+      _picker.unit.tsName = null; _picker.unit.localId = null; // clear registry selection
+      document.querySelectorAll("[id^='ut-btn-']").forEach(b => { b.style.background=''; b.style.borderColor=ut.color+'44'; });
+      btn.style.background = ut.color+'22'; btn.style.borderColor = ut.color;
+    };
+    wrap.appendChild(btn);
+  });
+  if (UNIT_TYPES.length && !S_unitGid) { S_unitGid = UNIT_TYPES[0].gid; $('ut-btn-0')?.click(); }
+}
+
+function renderUnitDeclarations() {
+  const wrap = $('unit-declarations'); if (!wrap) return;
+  if (!UNIT_TYPES.length) {
+    wrap.innerHTML = '<p style="font-size:.78rem;color:var(--muted)">Belum ada unit.</p>';
+    return;
+  }
+  $('unit-preset-row')?.remove();
+  wrap.innerHTML = '';
+  UNIT_TYPES.forEach((ut, i) => {
+    const div = document.createElement('div');
+    div.style.cssText = `display:flex;align-items:center;gap:8px;background:var(--surf2);border-radius:8px;padding:9px 12px;border:1px solid ${ut.color}44`;
+    div.innerHTML = `
+      <span style="font-size:1.2rem">${ut.emoji}</span>
+      <div style="flex:1"><b style="font-size:.82rem">${ut.label}</b><span style="font-size:.7rem;color:var(--muted);margin-left:6px">GID ${ut.gid}</span></div>
+      <button onclick="UNIT_TYPES.splice(${i},1);renderUnitDeclarations()" 
+        style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px">✕</button>`;
+    wrap.appendChild(div);
+  });
+}
+
+function updateStartBtn() { /* no-op, kept for compat */ }
+function setCustomUnitGid() { /* legacy, unused */ }
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS INTERACTION (brush, polygon, CC/Res click)
+// ═══════════════════════════════════════════════════════════
+let _drawing=false, _lastPts=[];
+
+function canvasXY(e){
+  // canvas CSS: width=100% of container, height=auto (aspect-correct)
+  // rect.width = actual display px; tileSize = rect.width/mapW
+  const cv = getCanvas(), rect = cv.getBoundingClientRect();
+  let cx, cy;
+  if (e.touches && e.touches.length) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+  else { cx = e.clientX; cy = e.clientY; }
+  const dx = cx - rect.left;   // display px from left
+  const dy = cy - rect.top;    // display px from top
+  // Recompute tileSize from actual rendered size (handles zoom + reflow)
+  const ts = rect.width / cv.width;
+  const mapW = cv.width, mapH = cv.height;
+  const c = Math.max(0, Math.min(mapW-1, Math.floor(dx / ts)));
+  const r = Math.max(0, Math.min(mapH-1, Math.floor(dy / ts)));
+  // Internal coords for direct ctx usage
+  const px = Math.max(0, Math.min(mapW, dx / ts));
+  const py = Math.max(0, Math.min(mapH, dy / ts));
+  return [r, c, px, py];
+}
+
+function setupCanvasEvents(){
+  const cv=getCanvas();
+
+  cv.addEventListener("touchstart",e=>{
+    e.preventDefault();
+    const[r,c]=canvasXY(e);
+    _drawing=true; _lastPts=[[r,c]];
+    handleCanvasDown(r,c);
+  },{passive:false});
+
+  cv.addEventListener("touchmove",e=>{
+    e.preventDefault();
+    if(!_drawing) return;
+    const[r,c]=canvasXY(e);
+    const last=_lastPts[_lastPts.length-1];
+    if(last[0]!==r||last[1]!==c){ _lastPts.push([r,c]); handleCanvasMove(r,c) }
+  },{passive:false});
+
+  cv.addEventListener("touchend",e=>{
+    e.preventDefault();
+    _drawing=false;
+    if(_lastPts.length>0) flushBrushBatch();
+    if(_bridgeDrawing) flushBridgeStroke();
+    _bridgeDrawing=false;
+    _lastPts=[];
+  },{passive:false});
+
+  cv.addEventListener("mousedown",e=>{
+    _drawing=true; _lastPts=[];
+    const[r,c]=canvasXY(e);
+    _lastPts.push([r,c]);
+    handleCanvasDown(r,c,e.button===2);
+  });
+  cv.addEventListener("mousemove",e=>{
+    if(!_drawing) return;
+    const[r,c]=canvasXY(e);
+    const last=_lastPts[_lastPts.length-1];
+    if(!last||last[0]!==r||last[1]!==c){ _lastPts.push([r,c]); handleCanvasMove(r,c) }
+  });
+  cv.addEventListener("mouseup",()=>{
+    _drawing=false;
+    flushBrushBatch();
+    if(_bridgeDrawing) flushBridgeStroke();
+    _bridgeDrawing=false;
+    _lastPts=[];
+  });
+  cv.addEventListener("contextmenu",e=>e.preventDefault());
+}
+
+let _brushBatch=[];
+
+function handleCanvasDown(r,c,isRight=false){
+  if(S.step===1&&S.hillMode==="brush"){
+    _brushBatch=[[r,c]];
+  }else if(S.step===1&&S.hillMode==="polygon"){
+    handlePolyTap(r,c);
+  }else if(S.step===1&&S.hillMode==="bridge"){
+    _bridgeDrawing=true;
+    _bridgePoints=[[r,c]];
+    const info=$("bridge-stroke-info");
+    if(info) info.textContent="Drag untuk gambar bridge…";
+  }else if(S.step===3){
+    placeCC(r,c,isRight);
+  }else if(S.step===4){
+    placeRes(r,c,isRight);
+  }else if(S.step===5){
+    if(S.placeMode==="item") placeCustomItem(r,c,isRight);
+    else                     placeCustomUnit(r,c,isRight);
+  }
+}
+
+function handleCanvasMove(r,c){
+  if(S.step===1&&S.hillMode==="brush"&&_drawing){
+    _brushBatch.push([r,c]);
+    // Throttle: send every 12 points
+    if(_brushBatch.length>=20){ flushBrushBatch() }
+  }else if(S.step===1&&S.hillMode==="bridge"&&_bridgeDrawing){
+    const last=_bridgePoints[_bridgePoints.length-1];
+    if(!last||last[0]!==r||last[1]!==c) _bridgePoints.push([r,c]);
+    // Live feedback: show direction
+    const rs=_bridgePoints.map(p=>p[0]), cs=_bridgePoints.map(p=>p[1]);
+    const dy=Math.max(...rs)-Math.min(...rs), dx=Math.max(...cs)-Math.min(...cs);
+    const info=$("bridge-stroke-info");
+    if(info) info.textContent=`${dx>=dy?"↔ Horizontal":"↕ Vertical"} — ${_bridgePoints.length} titik`;
+  }
+}
+
+let _brushFlushPending=false;
+
+async function flushBrushBatch(){
+  if(!_brushBatch.length||S.step!==1||S.hillMode!=="brush") return;
+  const pts=[..._brushBatch]; _brushBatch=[];
+
+  // ── INSTANT LOCAL DRAW (no server round-trip) ──────────────
+  // Paint dots directly on canvas for zero-lag feedback
+  const ctx=getCtx();
+  const ts=1; // canvas 1px/cell
+  const bs=Math.floor(S.brushSize/2);
+  const color=S.brushVal===0?"transparent":S.brushVal===1?WALL_COLOR:WALL2_COLOR;
+  const snap=S.snap;
+  const mapH=snap?.meta?.height||0, mapW=snap?.meta?.width||0;
+  if(S.brushVal!==0){
+    for(const[r,c] of pts){
+      for(let dr=-bs;dr<=bs;dr++) for(let dc=-bs;dc<=bs;dc++){
+        const nr=r+dr, nc=c+dc;
+        if(nr<0||nr>=mapH||nc<0||nc>=mapW) continue;
+        ctx.fillStyle=color;
+        ctx.fillRect(Math.round(nc*ts),Math.round(nr*ts),Math.ceil(ts),Math.ceil(ts));
+      }
+    }
+  }
+
+  // ── ASYNC SERVER SYNC (background) ───────────────────────────
+  if(_brushFlushPending) return;  // already one pending
+  _brushFlushPending=true;
+  try{
+    const mirrorOn=document.getElementById("brush-mirror")?.checked!==false;
+    const r=await rpc("draw_brush_walls",{points:pts,value:S.brushVal,brush_size:S.brushSize,no_mirror:!mirrorOn});
+    S.snap=r.snapshot;
+    // Only full redraw every ~200ms (not per batch)
+    if(!_brushRedrawTimer) _brushRedrawTimer=setTimeout(()=>{
+      redraw(); _brushRedrawTimer=null;
+    },200);
+  }catch(e){ console.warn(e) }
+  finally{ _brushFlushPending=false; }
+}
+let _brushRedrawTimer=null;
+
+// ═══════════════════════════════════════════════════════════
+//  POLYGON TOOL
+// ═══════════════════════════════════════════════════════════
+const CLOSE_THRESH=5; // tiles
+
+function handlePolyTap(r,c){
+  if(!S.drawingPoly){
+    S.drawingPoly={id:S.polyIdCtr++,vertices:[[r,c]],edgeGaps:[],closed:false};
+  }else{
+    const verts=S.drawingPoly.vertices;
+    if(verts.length>=3){
+      const[r0,c0]=verts[0];
+      const dist=Math.sqrt((r-r0)**2+(c-c0)**2);
+      if(dist<=CLOSE_THRESH){ closePoly(); return; }
+    }
+    S.drawingPoly.vertices.push([r,c]);
+    S.drawingPoly.edgeGaps.push(false);
+  }
+  drawPolygonOverlay();
+}
+
+function closePoly(){
+  if(!S.drawingPoly||S.drawingPoly.vertices.length<3) return;
+  S.drawingPoly.closed=true;
+  const poly=S.drawingPoly;
+  // Add mirrored copy
+  const mirror=mirrorPoly(poly,S.snap?.meta?.height,S.snap?.meta?.width,sv("c-mir"));
+  S.polygons.push(poly);
+  if(mirror) S.polygons.push(mirror);
+  S.drawingPoly=null;
+  syncPolygons();
+}
+
+function cancelPoly(){ S.drawingPoly=null; drawPolygonOverlay() }
+
+function clearPolygons(){
+  S.polygons=[]; S.drawingPoly=null;
+  rpc("clear_all_polygons").then(r=>{S.snap=r.snapshot;S.zoomScale=1;redraw()});
+}
+
+function mirrorPoly(poly,h,w,mirroring){
+  if(!h||!w||mirroring==="none") return null;
+  const verts=poly.vertices.map(([r,c])=>{
+    switch(mirroring){
+      case "vertical":   return[r,w-1-c];
+      case "horizontal": return[h-1-r,c];
+      case "diagonal1":  return[c,r];
+      case "diagonal2":  return[h-1-c,w-1-r];
+      case "both":       return[h-1-r,w-1-c];
+      default: return[r,c];
+    }
+  });
+  return{id:S.polyIdCtr++,vertices:verts,edgeGaps:[...poly.edgeGaps],closed:true};
+}
+
+async function syncPolygons(){
+  try{
+    const r=await rpc("update_polygons",{
+      polygons:S.polygons.filter(p=>p.closed&&p.vertices.length>=3)
+    });
+    S.snap=r.snapshot; redraw();
+  }catch(e){ console.warn(e) }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HILL DRAWING MODE
+// ═══════════════════════════════════════════════════════════
+function setHillMode(mode){
+  S.hillMode=mode;
+  $("tab-brush")?.classList.toggle("active",mode==="brush");
+  $("tab-poly")?.classList.toggle("active",mode==="polygon");
+  $("tab-bridge")?.classList.toggle("active",mode==="bridge");
+  const bc=$("brush-ctrl"), pc=$("poly-ctrl"), brc=$("bridge-ctrl");
+  if(bc)  bc.style.display=mode==="brush"?"":"none";
+  if(pc)  pc.style.display=mode==="polygon"?"":"none";
+  if(brc) brc.style.display=mode==="bridge"?"":"none";
+  if(mode==="bridge"){
+    const warn=$("bridge-no-tileset-warn");
+    if(warn) warn.style.display=S.bridgeImg?"none":"";
+    refreshBridgeSelector();
+  }
+  drawPolygonOverlay();
+}
+
+// ── Bridge tileset selector ───────────────────────────────
+async function refreshBridgeSelector() {
+  const sel = $('bridge-ts-select');
+  if (!sel) return;
+  try {
+    const data = await _fetchRegistryJSON('/registry?type=bridge');
+    if (!data) return;
+    const entries = Object.entries(data.tilesets || {});
+    const prev = sel.value || S.activeBridge;
+
+    sel.innerHTML = entries.length
+      ? '<option value="">— pilih bridge —</option>'
+      : '<option value="">— tidak ada bridge —</option>';
+
+    entries.forEach(([name, ts]) => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = `${name}  (${ts.tilecount} tile · ${ts.bridge_variant||'12'}-tile)`;
+      if (name === prev) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    if (!sel.value && entries.length === 1) sel.value = entries[0][0];
+    if (sel.value && sel.value !== S.activeBridge) {
+      await switchActiveBridge(sel.value);
+    } else {
+      const warn = $('bridge-no-tileset-warn');
+      if (warn) warn.style.display = entries.length ? 'none' : '';
+    }
+  } catch(e) { console.warn('refreshBridgeSelector:', e); }
+}
+
+async function switchActiveBridge(name) {
+  if (!name) return;
+  try {
+    const res  = await fetch('/registry/activate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, role:'bridge'}),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    S.activeBridge = name;
+    await _loadBridgeTsFromRegistry();
+    const sel = $('bridge-ts-select');
+    if (sel && sel.value !== name) sel.value = name;
+    const warn = $('bridge-no-tileset-warn');
+    if (warn) warn.style.display = 'none';
+    toast(`🌉 Bridge aktif: "${name}"`);
+    redraw();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// Bridge drawing state
+let _bridgeDrawMode = "draw";   // "draw" | "erase"
+let _bridgeDir      = "auto";   // "auto" | "H" | "V"
+let _bridgeDrawing  = false;
+let _bridgePoints   = [];
+
+function setBridgeDir(d){
+  _bridgeDir = d;
+  ["auto","H","V"].forEach(k=>{
+    const btn=$("bridge-dir-"+k); if(!btn) return;
+    const active = k===d;
+    btn.style.borderColor = active?"var(--accent)":"";
+    btn.style.color       = active?"var(--accent)":"";
+    btn.style.fontWeight  = active?"700":"";
+  });
+}
+
+async function flushBridgeStroke(){
+  if(!_bridgePoints.length) return;
+  const pts=[..._bridgePoints]; _bridgePoints=[];
+  const method=_bridgeDrawMode==="erase"?"erase_bridge":"draw_bridge";
+  try{
+    const r=await rpc(method,{points:pts,erase:_bridgeDrawMode==="erase",direction:_bridgeDir});
+    S.snap=r.snapshot; redraw();
+    const info=$("bridge-stroke-info");
+    if(info) info.textContent=`✓ Bridge ${_bridgeDrawMode==="erase"?"dihapus":"digambar"}.`;
+  }catch(e){
+    const info=$("bridge-stroke-info");
+    if(info) info.textContent="❌ "+e.message;
+  }
+}
+
+function setBridgeMode(m){
+  _bridgeDrawMode = m;
+  const drawBtn=$("bridge-draw-btn"), eraseBtn=$("bridge-erase-btn");
+  if(drawBtn){
+    drawBtn.style.borderColor=m==="draw"?"var(--accent)":"";
+    drawBtn.style.color=m==="draw"?"var(--accent)":"";
+    drawBtn.style.fontWeight=m==="draw"?"700":"";
+  }
+  if(eraseBtn){
+    eraseBtn.style.borderColor=m==="erase"?"#f87171":"";
+    eraseBtn.style.color=m==="erase"?"#f87171":"";
+    eraseBtn.style.fontWeight=m==="erase"?"700":"";
+  }
+}
+
+function setBrushVal(v){
+  S.brushVal=v;
+  const configs={0:{bg:"rgba(255,255,255,0.1)",bd:"#94a3b8"},
+                 1:{bg:"rgba(60,30,10,0.3)",bd:"#92400e"},
+                 2:{bg:"rgba(200,100,30,0.2)",bd:"#f97316"}};
+  ["bw0","bw1","bw2"].forEach(id=>{
+    const el=$(id); if(!el) return;
+    const thisV=parseInt(id.replace("bw",""));
+    if(thisV===v){
+      el.style.background=configs[v]?.bg||"";
+      el.style.borderColor=configs[v]?.bd||"var(--accent)";
+      el.style.fontWeight="700";
+    } else {
+      el.style.background=""; el.style.borderColor=""; el.style.fontWeight="";
+    }
+  });
+}
+
+function buildBrushSizes(){
+  const wrap=$("brush-sizes");
+  [1,3,5,9].forEach(n=>{
+    const btn=document.createElement("button");
+    btn.className="bs-btn"+(n===3?" active":"");
+    btn.textContent=n;
+    btn.onclick=()=>{
+      S.brushSize=n;
+      wrap.querySelectorAll(".bs-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CC / RESOURCE PLACEMENT
+// ═══════════════════════════════════════════════════════════
+async function placeCC(r,c,isRight=false){
+  const mirrored=$("cc-mir").checked;
+  const method=isRight?"remove_cc_manual":"place_cc_manual";
+  try{
+    const res=await rpc(method,{row:r,col:c,mirrored});
+    S.snap=res.snapshot; redraw(); renderCCList();
+    const n=res.snapshot.cc_positions.length;
+    setStatus(isRight?`CC removed`:`${n} CC placed`);
+    if(n>0) markDone(3);
+  }catch(e){ toast("❌ "+e.message) }
+}
+
+async function placeRes(r,c,isRight=false){
+  const mirrored=$("res-mir").checked;
+  const method=isRight?"remove_resource_manual":"place_resource_manual";
+  try{
+    const res=await rpc(method,{row:r,col:c,mirrored});
+    S.snap=res.snapshot; redraw(); renderResList();
+    const n=res.snapshot.resource_positions.length;
+    setStatus(isRight?`Resource removed`:`${n} resources placed`);
+    if(n>0) markDone(4);
+  }catch(e){ toast("❌ "+e.message) }
+}
+
+function getCCTeam(r,c){
+  const um=S.snap?.matrices?.units_matrix;
+  if(!um) return null;
+  const w=um.shape[1];
+  const v=um.data[r*w+c];
+  if(!v) return null;
+  const TEAM_MAP={101:"T1-P1",106:"T2-P1",102:"T1-P2",107:"T2-P2",
+    103:"T1-P3",108:"T2-P3",104:"T1-P4",109:"T2-P4",105:"T1-P5",110:"T2-P5"};
+  return TEAM_MAP[v]||("GID:"+v);
+}
+function renderCCList(){
+  const pos=S.snap?.cc_positions||[];
+  const el=$("cc-list"); if(!el) return;
+  if(!pos.length){el.innerHTML='<span class="pos-empty">Belum ada</span>';return;}
+  el.innerHTML=pos.map(([r,c])=>{
+    const team=getCCTeam(r,c);
+    const label=team?`<b style="color:var(--accent)">${team}</b> `:"";
+    return `<span class="pos-tag">${label}[${r},${c}]</span>`;
+  }).join("");
+}
+function renderResList(){
+  const pos=S.snap?.resource_positions||[];
+  const el=$("res-list"); if(!el) return;
+  el.innerHTML=pos.length
+    ?pos.map(([r,c])=>`<span class="pos-tag">[${r},${c}]</span>`).join("")
+    :'<span class="pos-empty">Belum ada</span>';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SEED GRID
+// ═══════════════════════════════════════════════════════════
+// Mirror helper for seed grid (same as original WizardApp.tsx)
+function getSeedMirroredCells(row, col, size, mode){
+  const cells = new Set();
+  const add = (r,c) => { if(r>=0&&c>=0&&r<size&&c<size) cells.add(r+":"+c); };
+  add(row, col);
+  if(mode==="horizontal"){ add(size-1-row, col); }
+  else if(mode==="vertical"){ add(row, size-1-col); }
+  else if(mode==="diagonal1"){ add(col, row); }
+  else if(mode==="diagonal2"){ add(size-1-col, size-1-row); }
+  else if(mode==="both"){
+    add(size-1-row, col);
+    add(row, size-1-col);
+    add(size-1-row, size-1-col);
+  }
+  return [...cells].map(s=>s.split(":").map(Number));
+}
+
+// Re-apply mirroring — only use SOURCE half, overwrite the mirror half
+function applyMirroringToGrid(grid, mode){
+  const n=grid.length;
+  const g=grid.map(r=>[...r]);
+  if(mode==="none") return g;
+
+  const mid=Math.floor(n/2);
+  if(mode==="vertical"){
+    for(let r=0;r<n;r++) for(let c=0;c<mid;c++) g[r][n-1-c]=g[r][c];
+  } else if(mode==="horizontal"){
+    for(let r=0;r<mid;r++) for(let c=0;c<n;c++) g[n-1-r][c]=g[r][c];
+  } else if(mode==="both"){
+    for(let r=0;r<mid;r++) for(let c=0;c<mid;c++){
+      g[r][n-1-c]=g[r][c];
+      g[n-1-r][c]=g[r][c];
+      g[n-1-r][n-1-c]=g[r][c];
+    }
+  } else if(mode==="diagonal1"){
+    for(let r=0;r<n;r++) for(let c=r+1;c<n;c++) g[c][r]=g[r][c];
+  } else if(mode==="diagonal2"){
+    for(let r=0;r<n;r++) for(let c=0;c<n-1-r;c++) g[n-1-c][n-1-r]=g[r][c];
+  }
+  return g;
+}
+
+function buildSeedGrid(){
+  const n=S.gridSize;
+  const wrap=$("seed-grid"); if(!wrap) return;
+  wrap.innerHTML="";
+  wrap.style.gridTemplateColumns=`repeat(${n},1fr)`;
+  const cellMin=Math.max(28, Math.min(52, Math.floor(280/n)));
+  for(let r=0;r<n;r++) for(let c=0;c<n;c++){
+    const btn=document.createElement("button");
+    btn.className="seed-cell "+(S.grid[r]?.[c]?"on":"off");
+    btn.style.minHeight=cellMin+"px";
+    btn.onclick=()=>{
+      const newVal=S.grid[r]?.[c]?0:1;
+      const mode=document.getElementById("c-mir")?.value||"none";
+      for(const[mr,mc] of getSeedMirroredCells(r,c,n,mode)){
+        if(!S.grid[mr]) S.grid[mr]=[];
+        S.grid[mr][mc]=newVal;
+      }
+      buildSeedGrid();
+    };
+    wrap.appendChild(btn);
+  }
+  const lbl=$("grid-size-label"); if(lbl) lbl.textContent=n;
+  const inp=$("grid-size-input"); if(inp) inp.value=n;
+}
+
+function resizeQSeedGrid(delta){
+  // Quick mode seed grid resize — mirrors resizeSeedGrid behaviour
+  S.qGridSize = Math.max(2, Math.min(9, (S.qGridSize||5) + delta));
+  const lbl = $("q-seed-label");
+  if(lbl){ lbl.textContent = S.qGridSize; lbl.style.display = ""; }
+  buildQSeedGrid();
+}
+function resizeSeedGrid(newSize){
+  newSize=Math.max(2,parseInt(newSize)||5);
+  const old=S.gridSize;
+  S.gridSize=newSize;
+  const inp=$("grid-size-input"); if(inp) inp.value=newSize;
+  const lbl=$("grid-size-label"); if(lbl) lbl.textContent=newSize;
+  // Preserve existing values, expand/shrink grid
+  const newGrid=[];
+  for(let r=0;r<newSize;r++){
+    const row=[];
+    for(let c=0;c<newSize;c++){
+      // Scale old grid proportionally
+      const sr=Math.floor(r*old/newSize);
+      const sc=Math.floor(c*old/newSize);
+      row.push(S.grid[sr]?.[sc]||0);
+    }
+    newGrid.push(row);
+  }
+  S.grid=newGrid;
+  // Re-apply mirroring
+  const mode=document.getElementById("c-mir")?.value||"none";
+  S.grid=applyMirroringToGrid(S.grid,mode);
+  buildSeedGrid();
+  toast(`Grid ${newSize}×${newSize}`);
+}
+
+function buildPresets(){
+  const wrap=$("preset-grid"); if(!wrap) return;
+  PRESETS.forEach(p=>{
+    const btn=document.createElement("button");
+    btn.className="preset-btn";
+    btn.innerHTML=`<span class="pe">${p.e}</span><span class="pn">${p.label}</span>`;
+    btn.onclick=()=>{
+      const mode=document.getElementById("c-mir")?.value||"none";
+      S.grid=applyMirroringToGrid(p.g.map(r=>[...r]),mode);
+      buildSeedGrid(); toast("Preset: "+p.label);
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  QUICK GENERATE SEED GRID
+// ═══════════════════════════════════════════════════════════
+const QG = {
+  grid:[[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]]
+};
+
+function buildQSeedGrid(){
+  const wrap=$("q-seed-grid"); if(!wrap) return;
+  wrap.innerHTML="";
+  for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+    const btn=document.createElement("button");
+    btn.className="seed-cell "+(QG.grid[r][c]?"on":"off");
+    btn.style.minHeight="38px";
+    btn.onclick=()=>{
+      const newVal=QG.grid[r][c]?0:1;
+      const mode=document.getElementById("q-mir")?.value||"none";
+      for(const[mr,mc] of getSeedMirroredCells(r,c,5,mode)){
+        QG.grid[mr][mc]=newVal;
+      }
+      buildQSeedGrid();
+    };
+    wrap.appendChild(btn);
+  }
+}
+
+function buildQPresets(){
+  const wrap=$("q-preset-grid"); if(!wrap) return;
+  PRESETS.forEach(p=>{
+    const btn=document.createElement("button");
+    btn.className="preset-btn";
+    btn.innerHTML=`<span class="pe">${p.e}</span><span class="pn">${p.label}</span>`;
+    btn.onclick=()=>{
+      const mode=document.getElementById("q-mir")?.value||"none";
+      QG.grid=applyMirroringToGrid(p.g.map(r=>[...r]),mode);
+      buildQSeedGrid(); toast("Preset: "+p.label);
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  COASTLINE ANIMATION
+// ═══════════════════════════════════════════════════════════
+function playAnimation(frames){
+  if(S.animTimer){ clearInterval(S.animTimer); S.animTimer=null }
+  if(!frames||!frames.length) return;
+  S.animFrames=frames; S.animIdx=0;
+  S.animTimer=setInterval(()=>{
+    if(S.animIdx>=S.animFrames.length){
+      clearInterval(S.animTimer); S.animTimer=null;
+      redraw(); return;
+    }
+    const f=S.animFrames[S.animIdx++];
+    if(!S.snap) return;
+    const fakeSnap={...S.snap,meta:{...S.snap.meta,height:f.shape[0],width:f.shape[1]},
+      matrices:{...S.snap.matrices,coastline_height_map:{shape:f.shape,data:f.data}}};
+    const{width:w,height:h}=fakeSnap.meta;
+    setupCanvas(w,h);
+    const ctx=getCtx(); ctx.clearRect(0,0,getCanvas().width,getCanvas().height);
+    renderHeightMap(ctx,fakeSnap.matrices.coastline_height_map,w,h,true);
+  },120);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WIZARD STEP NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function markDone(n){ S.completed=Math.max(S.completed,n); updateStepUI() }
+
+function updateStepUI(){
+  document.querySelectorAll(".step-btn").forEach((btn,i)=>{
+    btn.className="step-btn";
+    if(i<S.completed+1) btn.classList.add("done");
+    if(i===S.step)      btn.classList.add("active");
+    btn.disabled=i>S.completed+1;
+  });
+  document.querySelectorAll(".step-panel").forEach((p,i)=>{
+    p.style.display=i===S.step?"":"none";
+  });
+  const btnBack=$("btn-back"), btnNext=$("btn-next");
+  if(btnBack){
+    btnBack.disabled = S.step===0;
+    btnBack.style.display = "block";
+  }
+  if(btnNext){
+    if(S.step>=6){
+      btnNext.style.display="none";
+    } else if(S.step===5){
+      // Units step — always skippable
+      btnNext.style.display="block";
+      btnNext.textContent="Lewati →";
+      btnNext.className="btn";
+    } else {
+      btnNext.style.display="block";
+      btnNext.textContent="Next →";
+      btnNext.className="btn btn-primary";
+    }
+  }
+  if(S.step===6) renderExportSummary();
+}
+
+function goTo(n){
+  if(n<0||n>6) return;
+  S.step=n; updateStepUI();
+  window.scrollTo(0,0);
+}
+
+document.querySelectorAll(".step-btn").forEach((btn,i)=>{
+  btn.onclick=()=>{ if(!btn.disabled) goTo(i) };
+});
+$("btn-back").onclick=()=>goTo(S.step-1);
+$("btn-next").onclick=()=>{
+  if(S.step===1){ markDone(1); goTo(2); return; }
+  if(S.step===5){ markDone(5); goTo(6); return; }  // Units step always skippable
+  if(S.step<S.completed+1) goTo(S.step+1);
+  else toast("Selesaikan langkah ini dulu!");
+};
+
+// ═══════════════════════════════════════════════════════════
+//  STEP ACTIONS
+// ═══════════════════════════════════════════════════════════
+
+// STEP 0 — Coastline
+$("btn-coast").onclick=async()=>{
+  showLoad("Generating coastline…");
+  const pattern=iv("c-ts");
+  await loadTilesets(pattern);
+  try{
+    const smooth=parseInt(document.getElementById("c-smooth")?.value||"3");
+    const res=await rpc("run_coastline",{
+      grid:S.grid,height:iv("c-h"),width:iv("c-w"),
+      mirroring:sv("c-mir"),tileset:pattern,
+      heightLevels:7,oceanLevels:3,numPlayers:4,numResources:12,
+      shoreline_smoothness: smooth/9.0,
+    });
+    S.snap=res.snapshot;
+    markDone(0); setStatus("Coastline ✓");
+    hideLoad();
+    if(res.frames&&res.frames.length){ playAnimation(res.frames); toast("Coastline generating…⚡") }
+    else{ redraw(); toast("✅ Coastline siap!") }
+    goTo(1);
+  }catch(e){ hideLoad(); toast("❌ "+e.message) }
+};
+
+// STEP 1 — (Hill drawing — handled by canvas events)
+
+// STEP 2 — Height
+$("btn-height").onclick=async()=>{
+  showLoad("Generating height map…");
+  try{
+    const res=await rpc("run_height_ocean",{heightLevels:iv("height-lvl"),oceanLevels:iv("ocean-lvl")});
+    S.snap=res.snapshot; markDone(2); setStatus("Height map ✓");
+    redraw(); toast("✅ Height map siap!");
+  }catch(e){ toast("❌ "+e.message) }
+  finally{ hideLoad() }
+};
+
+// STEP 3 — CC
+$("btn-cc-rand").onclick=async()=>{
+  showLoad("Menempatkan CC…");
+  try{
+    const res=await rpc("place_cc_random",{numPlayers:iv("cc-num")});
+    S.snap=res.snapshot; markDone(3);
+    redraw(); renderCCList();
+    toast(`✅ ${res.snapshot.cc_positions.length} CC ditempatkan!`);
+  }catch(e){ toast("❌ "+e.message) }
+  finally{ hideLoad() }
+};
+$("btn-cc-undo").onclick=async()=>{
+  const res=await rpc("undo_cc"); S.snap=res.snapshot; redraw(); renderCCList(); toast("Undo CC ↩");
+};
+$("btn-cc-clear").onclick=async()=>{
+  const res=await rpc("clear_cc"); S.snap=res.snapshot; redraw(); renderCCList(); toast("CC dihapus 🗑");
+};
+
+// STEP 4 — Resource
+$("btn-res-rand").onclick=async()=>{
+  showLoad("Menempatkan resource…");
+  try{
+    const res=await rpc("place_resource_random",{numResources:iv("res-num")});
+    S.snap=res.snapshot; markDone(4);
+    redraw(); renderResList();
+    toast(`✅ ${res.snapshot.resource_positions.length} resource ditempatkan!`);
+  }catch(e){ toast("❌ "+e.message) }
+  finally{ hideLoad() }
+};
+$("btn-res-undo").onclick=async()=>{
+  const res=await rpc("undo_resource"); S.snap=res.snapshot; redraw(); renderResList(); toast("Undo resource ↩");
+};
+$("btn-res-clear").onclick=async()=>{
+  const res=await rpc("clear_resource"); S.snap=res.snapshot; redraw(); renderResList(); toast("Resource dihapus 🗑");
+};
+
+// STEP 5 — Export
+function renderExportSummary(){
+  const snap=S.snap; if(!snap) return;
+  const names=["","Forest","Winter","Volcanic","Desert","Jungle"];
+  $("exp-sum").innerHTML=
+    `📐 Ukuran: <b>${snap.meta.width}×${snap.meta.height}</b><br>`+
+    `🎨 Tileset: <b>${names[snap.meta.pattern]||snap.meta.pattern}</b><br>`+
+    `🔁 Mirror: <b>${snap.meta.mirroring}</b><br>`+
+    `👥 CC: <b>${snap.cc_positions.length} posisi</b><br>`+
+    `💎 Resource: <b>${snap.resource_positions.length} posisi</b>`;
+}
+
+$("btn-export").onclick=async()=>{
+  showLoad("Finalisasi peta…");
+  const prog=$("exp-prog"), bar=$("exp-bar");
+  prog.style.display=""; bar.style.width="20%";
+  try{
+    const bpRes=await fetch(`/blueprints/${S.snap?.meta?.pattern||5}`);
+    const bpXml=await bpRes.text();
+    bar.style.width="50%";
+    const res=await rpc("run_finalize",{blueprintXml:bpXml});
+    bar.style.width="85%";
+    S.snap=res.snapshot;
+    // Trigger final tile render
+    await loadTilesets(S.snap.meta.pattern);
+    // Also ensure bridge tileset is loaded for rendering
+    if(!S.bridgeImg){ try{ await _loadBridgeTsFromRegistry(); }catch(e){} }
+    markDone(6); redraw();
+    bar.style.width="100%";
+    // Show preview modal before download
+    await showPreview(res.tmx_bytes, res.snapshot, $("map-canvas"));
+    toast("✅ Preview siap — klik Download ZIP",3000);
+  }catch(e){ toast("❌ "+e.message) }
+  finally{ hideLoad(); setTimeout(()=>{prog.style.display="none";bar.style.width="0%"},1500) }
+};
+
+$("btn-newmap").onclick=async()=>{
+  await rpc("reset_state");
+  S.step=0; S.completed=-1; S.snap=null; S.tmxBytes=null;
+  S.polygons=[]; S.drawingPoly=null;
+  S.gridSize=5;
+  S.grid=[[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]];
+  // Keep imported tilesets (S.tilesets / S.tileImgs) across resets
+  buildSeedGrid(); updateStepUI(); goTo(0);
+  toast("Reset! Tileset import tetap tersimpan 🔄");
+};
+
+async function _doZipDownload(b64, snap, pngB64=""){
+  // Count players from units_matrix GIDs
+  // Team A: 101,102,103,104,105 / Team B: 106,107,108,109,110
+  let teamA=0, teamB=0;
+  const um=snap.matrices?.units_matrix;
+  if(um&&um.data){
+    const TEAM_A=new Set([101,102,103,104,105]);
+    const TEAM_B=new Set([106,107,108,109,110]);
+    const seen=new Set();
+    for(const gid of um.data){
+      if(!seen.has(gid)&&gid>0){
+        seen.add(gid);
+        if(TEAM_A.has(gid)) teamA++;
+        if(TEAM_B.has(gid)) teamB++;
+      }
+    }
+  }
+  const ncc=(snap.cc_positions||[]).length;
+  let mode;
+  if(ncc===0) mode="0v0";
+  else if(teamA>0&&teamB>0) mode=`${teamA}v${teamB}`;
+  else mode=`${ncc}p`;
+  const d=new Date();
+  const ts=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+  const baseName=`generated_${mode}_${ts}`;
+
+  const dlRes=await fetch("/download",{method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tmx_bytes:b64, png_bytes:pngB64, filename:baseName})});
+  const blob=await dlRes.blob();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=`${baseName}.zip`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TAB SWITCHING
+// ═══════════════════════════════════════════════════════════
+function switchTab(tab){
+  S.tab=tab;
+  document.querySelectorAll(".tab-btn").forEach(b=>{
+    b.classList.toggle("active",b.textContent.toLowerCase().includes(tab)||
+      (tab==="quick"&&b.textContent.includes("Quick"))||
+      (tab==="wizard"&&b.textContent.includes("Wizard")));
+  });
+  const wp=$("wizard-page"); if(wp) wp.style.display=tab==="wizard"?"flex":"none";
+  const qp=$("quick-page");  if(qp) qp.style.display=tab==="quick" ?"flex":"none";
+}
+
+// ═══════════════════════════════════════════════════════════
+//  QUICK GENERATE
+// ═══════════════════════════════════════════════════════════
+let _quickTmxB64=null;
+
+$("btn-quick-gen").onclick=async()=>{
+  const prog=$("q-prog"), bar=$("q-bar"), stepTxt=$("q-step-text");
+  $("btn-quick-dl").style.display="none";
+  prog.style.display=""; bar.style.width="0%";
+  _quickTmxB64=null;
+
+  const pattern=iv("q-ts");
+  const params={grid:QG.grid,height:iv("q-h"),width:iv("q-w"),mirroring:sv("q-mir"),
+    tileset:pattern,heightLevels:iv("q-hlvl"),oceanLevels:3,
+    numPlayers:iv("q-players"),numResources:iv("q-res")};
+
+  const qCanvas=$("quick-canvas");
+  const qCtx=qCanvas.getContext("2d");
+
+  function setQ(msg,pct){stepTxt.textContent=msg;bar.style.width=pct+"%"}
+
+  try{
+    // 1. Reset server state
+    setQ("Reset state…",3);
+    await rpc("reset_state");
+
+    // 2. Load tilesets FIRST and WAIT until all images are truly loaded
+    setQ("Memuat tileset…",8);
+    await loadTilesetsAndWait(pattern);
+
+    // 3. Coastline
+    setQ("Coastline…",15);
+    const c=await rpc("run_coastline",{...params});
+    renderQuickCanvas(qCanvas,qCtx,c.snapshot,"coastline");
+    if(c.frames) await animateQuickFrames(qCanvas,qCtx,c.frames);
+
+    // 4. Height
+    setQ("Height map…",35);
+    const h=await rpc("run_height_ocean",{heightLevels:iv("q-hlvl"),oceanLevels:3});
+    renderQuickCanvas(qCanvas,qCtx,h.snapshot,"height");
+
+    // 5. CC
+    setQ("Command Centers…",55);
+    const cc=await rpc("place_cc_random",{numPlayers:iv("q-players")});
+    renderQuickCanvas(qCanvas,qCtx,cc.snapshot,"height");
+
+    // 6. Resources
+    setQ("Resources…",70);
+    const rs=await rpc("place_resource_random",{numResources:iv("q-res")});
+    renderQuickCanvas(qCanvas,qCtx,rs.snapshot,"height");
+
+    // 7. Finalize
+    setQ("Finalisasi…",85);
+    const bpRes=await fetch(`/blueprints/${pattern}`);
+    const bpXml=await bpRes.text();
+    const fin=await rpc("run_finalize",{blueprintXml:bpXml});
+
+    // 8. Final render — tiles already loaded, just draw
+    setQ("Render peta…",95);
+    const qView=S.tilesetLoaded&&S.tileImgs.ground?"final":"height";
+    renderQuickCanvas(qCanvas,qCtx,fin.snapshot,qView);
+
+    bar.style.width="100%";
+    setQ(qView==="final"?"✅ Selesai! Peta dengan tile 🗺️":"✅ Selesai! (Height map mode)",100);
+    _quickTmxB64=fin.tmx_bytes;
+    $("btn-quick-dl").style.display="";
+    toast("✅ Map siap! Klik Download.",3000);
+  }catch(e){ toast("❌ "+e.message); setQ("Error: "+e.message,0) }
+};
+
+$("btn-quick-dl").onclick=async()=>{
+  if(!_quickTmxB64){ toast("Generate dulu!"); return }
+  const snap=S.snap||{cc_positions:[],meta:{pattern:iv("q-ts")}};
+  await showPreview(_quickTmxB64, snap, $("quick-canvas"));
+};
+
+function renderQuickCanvas(canvas,ctx,snap,view){
+  if(!snap) return;
+  const{width:w,height:h}=snap.meta;
+  const maxW=$("quick-canvas-wrap").clientWidth-8;
+  const ts=Math.max(2,Math.floor(maxW/w));
+  canvas.width=w*ts; canvas.height=h*ts;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const fakeTileSize=ts;
+  const canUseTiles=S.tilesetLoaded&&S.tileImgs.ground;
+
+  if(view==="coastline"&&snap.matrices.coastline_height_map){
+    renderHeightMap(ctx,snap.matrices.coastline_height_map,w,h,fakeTileSize,true);
+  }else if(view==="final"&&snap.matrices.id_matrix&&canUseTiles){
+    renderTileLayer(ctx,snap.matrices.id_matrix,w,h,"ground",true,fakeTileSize);
+    if(snap.matrices.items_matrix&&S.tileImgs.items)
+      renderTileLayer(ctx,snap.matrices.items_matrix,w,h,"items",false,fakeTileSize);
+    if(snap.matrices.units_matrix&&S.tileImgs.units)
+      renderTileLayer(ctx,snap.matrices.units_matrix,w,h,"units",false,fakeTileSize);
+  }else if(view==="final"&&snap.matrices.height_map){
+    renderHeightMap(ctx,snap.matrices.height_map,w,h,fakeTileSize);
+  }else if(snap.matrices.height_map){
+    renderHeightMap(ctx,snap.matrices.height_map,w,h,fakeTileSize);
+  }else if(snap.matrices.coastline_height_map){
+    renderHeightMap(ctx,snap.matrices.coastline_height_map,w,h,fakeTileSize,true);
+  }
+  // CC/Res dots
+  if(snap.cc_positions?.length){
+    // Use numbered boxes for quick canvas too
+    // renderCCBoxes now uses ts=1 internally; quick canvas uses fakeTileSize via renderCCOverlay
+    renderCCOverlay(ctx, snap, w, h, fakeTileSize);
+  }
+  if(snap.resource_positions?.length) renderDots(ctx,snap.resource_positions,RES_COLOR,w,h,fakeTileSize);
+  S.snap=snap;
+}
+
+
+async function animateQuickFrames(canvas,ctx,frames){
+  if(!frames||!frames.length) return;
+  await new Promise(resolve=>{
+    let i=0;
+    const timer=setInterval(()=>{
+      if(i>=frames.length){ clearInterval(timer); resolve(); return }
+      const f=frames[i++];
+      const w=f.shape[1], h=f.shape[0];
+      const maxW=$("quick-canvas-wrap").clientWidth-8;
+      const ts=Math.max(2,Math.floor(maxW/w));
+      canvas.width=w*ts; canvas.height=h*ts;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      renderHeightMap(ctx,{data:f.data},w,h,ts,true);  // coastline animation
+    },100);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PREVIEW BEFORE DOWNLOAD
+// ═══════════════════════════════════════════════════════════
+let _pendingTmxB64=null;
+let _pendingSnap=null;
+
+async function showPreview(b64, snap, canvasEl){
+  _pendingTmxB64=b64; _pendingSnap=snap;
+
+  // Show modal FIRST so canvas element exists in DOM
+  const modal=$("preview-modal");
+  modal.classList.add("show");
+
+  // Small tick to let browser render the modal
+  await new Promise(r=>setTimeout(r,50));
+
+  // Ensure bridge tileset is loaded before rendering preview
+  if(snap?.matrices?.bridge_matrix && !S.bridgeImg){
+    try{ await _loadBridgeTsFromRegistry(); }catch(e){}
+  }
+
+  // Now draw to preview canvas
+  const prev=$("preview-img");
+  if(prev){
+    const s=snap;
+    const mapW=s?.meta?.width||160, mapH=s?.meta?.height||160;
+
+    // Preview capped at 400px (game map preview standard)
+    const dispMaxW=Math.min(window.innerWidth-32, 400);
+    const dispMaxH=Math.min(Math.floor(window.innerHeight*0.62), 400);
+    const dispScale=Math.min(dispMaxW/mapW, dispMaxH/mapH);
+    const dispW=Math.round(mapW*dispScale), dispH=Math.round(mapH*dispScale);
+    prev.width=dispW; prev.height=dispH;
+    prev.style.width=dispW+"px"; prev.style.height=dispH+"px";
+
+    // Render at 4px/tile minimum for sharp preview
+    const renderTS=Math.max(4, dispScale);
+    const renderW=Math.round(mapW*renderTS), renderH=Math.round(mapH*renderTS);
+
+    const tmp=document.createElement("canvas");
+    tmp.width=renderW; tmp.height=renderH;
+    const tc=tmp.getContext("2d");
+    const savedTS=tileSize; tileSize=renderTS;
+
+    // Unified map draw helper — uses ts-aware private helpers so scaling works correctly
+    function _drawMapAt(ctx, ts) {
+      ctx.fillStyle="#020617"; ctx.fillRect(0,0,Math.round(mapW*ts),Math.round(mapH*ts));
+      const canUseTiles=S.tilesetLoaded&&S.tileImgs.ground;
+      if(s.matrices.id_matrix&&canUseTiles){
+        renderTileLayer(ctx,s.matrices.id_matrix,mapW,mapH,"ground",true,ts);
+        if(s.matrices.items_matrix&&S.tileImgs.items) renderTileLayer(ctx,s.matrices.items_matrix,mapW,mapH,"items",false,ts);
+        if(s.matrices.units_matrix&&S.tileImgs.units) renderTileLayer(ctx,s.matrices.units_matrix,mapW,mapH,"units",false,ts);
+      } else if(s.matrices.height_map){
+        renderHeightMap(ctx,s.matrices.height_map,mapW,mapH,ts,false);
+      } else if(s.matrices.coastline_height_map){
+        renderHeightMap(ctx,s.matrices.coastline_height_map,mapW,mapH,ts,true);
+      }
+      if(s.matrices.bridge_matrix){
+        if(S.bridgeImg) renderBridgeOverlay(ctx,s.matrices.bridge_matrix,mapW,mapH,ts);
+        else            renderBridgeFallback(ctx,s.matrices.bridge_matrix,mapW,mapH,ts);
+      }
+      if(s.resource_positions?.length) renderDots(ctx,s.resource_positions,RES_COLOR,ts);
+      if(s.cc_positions?.length) renderCCOverlay(ctx,s,mapW,mapH,ts);
+    }
+
+    if(s) _drawMapAt(tc, renderTS);
+    tileSize=savedTS;
+
+    // Downscale to display canvas with smooth interpolation
+    const pctx=prev.getContext("2d");
+    pctx.imageSmoothingEnabled=true;
+    pctx.imageSmoothingQuality="high";
+    pctx.drawImage(tmp,0,0,renderW,renderH,0,0,dispW,dispH);
+
+    // ZIP preview PNG: exactly 400px max (game standard)
+    const zipTS=Math.min(4, 400/Math.max(mapW,mapH));
+    const zipW=Math.round(mapW*zipTS), zipH=Math.round(mapH*zipTS);
+    const zipCanvas=document.createElement("canvas");
+    zipCanvas.width=zipW; zipCanvas.height=zipH;
+    const zctx=zipCanvas.getContext("2d");
+    if(s) _drawMapAt(zctx, zipTS);
+    tileSize=savedTS;
+    prev._zipB64=zipCanvas.toDataURL("image/png").split(",")[1];
+  }
+
+  // Info summary
+  const names=["","Forest","Winter","Volcanic","Desert","Jungle"];
+  const m=snap?.meta||{};
+  const info=$("preview-info");
+  if(info) info.innerHTML=
+    `📐 <b>${m.width||"?"}×${m.height||"?"}</b> tile &nbsp;|&nbsp; `+
+    `🎨 <b>${names[m.pattern]||m.pattern}</b> &nbsp;|&nbsp; `+
+    `🔁 <b>${m.mirroring||"?"}</b><br>`+
+    `👥 CC: <b>${(snap?.cc_positions||[]).length}</b> &nbsp;|&nbsp; `+
+    `💎 Resource: <b>${(snap?.resource_positions||[]).length}</b>`;
+}
+
+function closePreview(){
+  const m=$("preview-modal"); if(m){ m.classList.remove("show"); m.style.display=""; }
+  _pendingTmxB64=null; _pendingSnap=null;
+}
+
+// btn-preview-dl wired in init()
+
+// ═══════════════════════════════════════════════════════════
+//  IMPORT TILESET MODAL
+// ═══════════════════════════════════════════════════════════
+function openImport(){ $("import-modal")?.classList.add("show"); }
+function closeImport(){ $("import-modal")?.classList.remove("show"); }
+
+// ── Active Tileset Modal ────────────────────────────────────
+const _TS_ICONS = {terrain:'🌍', bridge:'🌉', unit:'🎮', items:'🏗️'};
+const _TS_TYPE_ORDER = ['terrain','bridge','unit','items'];
+
+async function openActiveTilesets() {
+  const modal = $('active-ts-modal');
+  if (modal) modal.classList.add('show');
+  await _refreshActiveTsList();
+}
+function closeActiveTilesets(){
+  const m = $("active-ts-modal");
+  if (m) { m.classList.remove("show"); m.style.display = ''; }
+}
+
+async function _refreshActiveTsList() {
+  const list = $('active-ts-list');
+  if (!list) return;
+  list.innerHTML = '<div style="font-size:.8rem;color:var(--muted)">Memuat…</div>';
+  try {
+    const [regRes, stateRes] = await Promise.all([
+      fetch('/registry'),
+      rpc('get_state_snapshot')
+    ]);
+    const regCT = regRes.headers.get('content-type')||'';
+    if(!regRes.ok||!regCT.includes('application/json')){ list.innerHTML='<div style="font-size:.8rem;color:var(--muted)">Backend tidak tersedia.</div>'; return; }
+    const regData   = await regRes.json();
+    const snap      = stateRes?.snapshot?.meta || {};
+    const activeBridge   = snap.active_bridge || '';
+    const activeTerrainKeys = snap.custom_terrain_mapping_keys || [];
+
+    const tilesets = regData.tilesets || {};
+    const entries  = Object.entries(tilesets);
+
+    if (!entries.length) {
+      list.innerHTML = `<div style="font-size:.8rem;color:var(--muted)">
+        Belum ada tileset terdaftar.<br>
+        <a href="/tileset-wizard" target="_blank" style="color:var(--accent)">
+          Buka Tileset Wizard →</a></div>`;
+      return;
+    }
+
+    list.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    // Group by type
+    const byType = {};
+    entries.forEach(([name, ts]) => { (byType[ts.type||'other'] ??= []).push([name, ts]); });
+
+    const orderedTypes = [..._TS_TYPE_ORDER, ...Object.keys(byType).filter(k=>!_TS_TYPE_ORDER.includes(k))];
+
+    orderedTypes.forEach(type => {
+      const items = byType[type];
+      if (!items?.length) return;
+
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:8px;padding-bottom:4px;border-bottom:1px solid var(--border)';
+      hdr.textContent = `${_TS_ICONS[type]||'📦'} ${type}`;
+      frag.appendChild(hdr);
+
+      items.forEach(([name, ts]) => {
+        const isActive = type === 'bridge'
+          ? activeBridge === name
+          : activeTerrainKeys.length > 0 && type === 'terrain';
+
+        const row = document.createElement('div');
+        row.id = `ts-row-${name.replace(/\W/g,'_')}`;
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 10px;background:var(--surf2);border-radius:8px;border:1px solid ' + (isActive ? 'rgba(63,185,80,.4)' : 'var(--border)');
+
+        // Info
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0';
+        info.innerHTML = `<div style="font-size:.82rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}${isActive?` <span style="font-size:.62rem;color:var(--green);font-weight:400">● aktif</span>`:''}</div>
+          <div style="font-size:.68rem;color:var(--muted)">GID ${ts.firstgid} · ${ts.tilecount} tiles · ${ts.tilewidth||20}×${ts.tileheight||20}px</div>`;
+
+        // Buttons
+        const btnWrap = document.createElement('div');
+        btnWrap.style.cssText = 'display:flex;gap:4px;flex-shrink:0';
+
+        if (isActive) {
+          const deactBtn = document.createElement('button');
+          deactBtn.style.cssText = 'min-height:36px;padding:6px 12px;border-radius:6px;border:1px solid var(--yellow);background:rgba(210,153,34,.1);color:var(--yellow);cursor:pointer;font-size:.75rem;white-space:nowrap;touch-action:manipulation';
+          deactBtn.textContent = '⏹';
+          deactBtn.title = 'Non-aktifkan';
+          deactBtn.onclick = async () => {
+            deactBtn.disabled = true;
+            try {
+              const r = await fetch('/registry/deactivate', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({name, role: type})
+              });
+              const d = await r.json();
+              if (d.error) throw new Error(d.error);
+              toast(`⏹ "${name}" dinonaktifkan`);
+              await _refreshActiveTsList();
+            } catch(e) { toast('❌ '+e.message); deactBtn.disabled=false; }
+          };
+          btnWrap.appendChild(deactBtn);
+        } else {
+          const actBtn = document.createElement('button');
+          actBtn.style.cssText = 'min-height:36px;padding:6px 12px;border-radius:6px;border:1px solid var(--green);background:rgba(63,185,80,.1);color:var(--green);cursor:pointer;font-size:.75rem;white-space:nowrap;touch-action:manipulation';
+          actBtn.textContent = '▶';
+          actBtn.title = 'Aktifkan';
+          actBtn.onclick = async () => {
+            actBtn.disabled = true; actBtn.textContent = '⏳';
+            try {
+              const r = await fetch('/registry/activate', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({name, role: type})
+              });
+              const d = await r.json();
+              if (d.error) throw new Error(d.error);
+              if (type === 'bridge') await _loadBridgeTsFromRegistry();
+              toast(`✅ "${name}" diaktifkan`);
+              await _refreshActiveTsList();
+            } catch(e) { toast('❌ '+e.message); actBtn.disabled=false; actBtn.textContent='▶'; }
+          };
+          btnWrap.appendChild(actBtn);
+        }
+
+        // Delete
+        const delBtn = document.createElement('button');
+        delBtn.style.cssText = 'min-height:36px;min-width:36px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:.8rem;touch-action:manipulation';
+        delBtn.textContent = '🗑';
+        delBtn.title = 'Hapus dari registry';
+        delBtn.onclick = () => {
+          // Inline confirm
+          row.style.borderColor = 'var(--red)';
+          btnWrap.innerHTML = '';
+          const cf = document.createElement('div');
+          cf.style.cssText = 'display:flex;align-items:center;gap:4px';
+          cf.innerHTML = `<span style="font-size:.7rem;color:var(--red)">Hapus?</span>`;
+          const yesBtn = document.createElement('button');
+          yesBtn.style.cssText = 'min-height:36px;padding:6px 12px;border-radius:6px;border:1px solid var(--red);background:rgba(248,81,73,.15);color:var(--red);cursor:pointer;font-size:.75rem;touch-action:manipulation';
+          yesBtn.textContent = 'Ya';
+          yesBtn.onclick = async () => {
+            yesBtn.disabled = true;
+            try {
+              const r = await fetch(`/registry/${encodeURIComponent(name)}`, {method:'DELETE'});
+              const d = await r.json();
+              if (d.error) throw new Error(d.error);
+              row.style.transition = 'opacity .25s'; row.style.opacity = '0';
+              setTimeout(() => { row.remove(); }, 260);
+              toast(`🗑 "${name}" dihapus`);
+            } catch(e) { toast('❌ '+e.message); await _refreshActiveTsList(); }
+          };
+          const noBtn = document.createElement('button');
+          noBtn.style.cssText = 'min-height:36px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:.75rem;touch-action:manipulation';
+          noBtn.textContent = 'Batal';
+          noBtn.onclick = () => _refreshActiveTsList();
+          cf.appendChild(yesBtn); cf.appendChild(noBtn);
+          btnWrap.appendChild(cf);
+        };
+        btnWrap.appendChild(delBtn);
+
+        row.appendChild(info); row.appendChild(btnWrap);
+        frag.appendChild(row);
+      });
+    });
+
+    list.appendChild(frag);
+  } catch(e) {
+    if (list) list.innerHTML = `<div style="font-size:.8rem;color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function activateTilesetFromRegistry(name, role) {
+  try {
+    const res  = await fetch('/registry/activate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, role}),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    toast(`✅ "${name}" diaktifkan sebagai ${role}`);
+    if (role === 'bridge') await _loadBridgeTsFromRegistry();
+    await _refreshActiveTsList();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// Load all bridge tilesets from registry → S.bridgeImgs/TsInfos + set S.bridgeImg
+async function _loadBridgeTsFromRegistry() {
+  try {
+    const res  = await fetch('/registry?type=bridge');
+    const data = await res.json();
+    const entries = Object.entries(data.tilesets || {});
+    if (!entries.length) return;
+
+    for (const [name, ts] of entries) {
+      const pngRes = await fetch('/registry/' + encodeURIComponent(name) + '/png');
+      if (!pngRes.ok) continue;
+      const pngData = await pngRes.json();
+      if (!pngData.png) continue;
+      S.bridgeTsInfos[name] = {
+        firstGid:  ts.firstgid, tileCount: ts.tilecount,
+        columns:   ts.columns,  tileWidth: ts.tilewidth||20,
+        tileHeight:ts.tileheight||20, name, tiles: ts.tiles||{},
+      };
+      const img = new Image();
+      await new Promise(r=>{img.onload=r;img.onerror=r;
+        img.src='data:image/png;base64,'+pngData.png;});
+      S.bridgeImgs[name] = img;
+    }
+    // Activate: prefer S.activeBridge if set and loaded, else first
+    const [first] = entries;
+    const targetName = (S.activeBridge && S.bridgeTsInfos[S.activeBridge] && S.bridgeImgs[S.activeBridge])
+      ? S.activeBridge : first?.[0];
+    if (targetName && S.bridgeTsInfos[targetName] && S.bridgeImgs[targetName]) {
+      S.bridgeTilesetInfo = S.bridgeTsInfos[targetName];
+      S.bridgeImg         = S.bridgeImgs[targetName];
+      S.activeBridge      = targetName;
+      const warn=$('bridge-no-tileset-warn'); if(warn) warn.style.display='none';
+      // Sync selector if visible
+      const sel=$('bridge-ts-select');
+      if(sel && sel.value !== targetName) sel.value = targetName;
+      redraw();
+    }
+  } catch(e) { console.warn('Bridge registry load:', e); }
+}
+
+const dropZone=$("drop-zone"); // null-safe: addEventListener below uses ?.
+dropZone?.addEventListener("dragover",e=>{ e.preventDefault(); dropZone.style.borderColor="var(--accent)" });
+dropZone?.addEventListener("dragleave",()=>{ dropZone.style.borderColor="" });
+dropZone?.addEventListener("drop",e=>{
+  e.preventDefault(); dropZone.style.borderColor="";
+  const f=e.dataTransfer.files?.[0]; if(f) processImportFile(f);
+});
+
+function handleFileInput(e){ const f=e.target.files?.[0]; if(f) processImportFile(f) }
+
+let _importedTmxText=null;
+
+async function processImportFile(file){
+  if(!file.name.endsWith(".tmx")){
+    showImportMsg("File harus berformat .tmx","err"); return;
+  }
+  showImportMsg(`Memuat ${file.name}…`,"loading");
+  $("drop-file").textContent=file.name;
+  $("drop-file").style.display="";
+  try{
+    const text=await file.text();
+    _importedTmxText=text;
+    showImportMsg(`✅ File dibaca: ${file.name}\nPilih apa yang ingin di-import:`,"ok");
+    $("import-options").style.display="";
+  }catch(e){ showImportMsg("❌ "+e.message,"err"); _importedTmxText=null; }
+}
+
+
+function showImportMsg(msg,type){
+  const el=$("import-msg"); el.textContent=msg;
+  el.className="import-msg "+(type||""); el.style.display="";
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+function updateSizeWarn(h, w, warnId){
+  const el=$(warnId); if(!el) return;
+  const px=parseInt(h||0)*parseInt(w||0);
+  if(px<=0){ el.style.display="none"; return; }
+  el.style.display="block";
+  if(px>500000){
+    el.style.color="var(--red)";
+    const t=Math.round(px/1000000*40);
+    el.textContent=`⚠️ ${parseInt(h)}×${parseInt(w)} = ${(px/1e6).toFixed(1)}M tiles — generate bisa ${t}–${t*3} detik`;
+  } else if(px>100000){
+    el.style.color="var(--yellow)";
+    const t=Math.round(px/1000000*15);
+    el.textContent=`⏱️ ${parseInt(h)}×${parseInt(w)} — estimasi ${t}–${t*2} detik`;
+  } else {
+    el.style.color="var(--green)";
+    el.textContent=`✓ ${parseInt(h)}×${parseInt(w)} — cepat`;
+  }
+}
+
+function init(){
+  buildPresets();
+  buildSeedGrid();
+  buildBrushSizes();
+  buildQPresets();
+  buildQSeedGrid();
+  setupPinchZoom();
+  buildUnitTypeGrid();
+  renderUnitDeclarations();
+
+  // Show/hide add form
+  $("btn-add-unit-decl")?.addEventListener("click",()=>{
+    $("unit-add-form").style.display="";
+    $("decl-name").focus();
+  });
+
+  // Confirm new declaration
+  $("btn-confirm-unit-decl")?.addEventListener("click",()=>{
+    const name=($("decl-name")?.value||"").trim()||"Unit";
+    const gid=parseInt($("decl-gid")?.value||"151");
+    const emoji=($("decl-emoji")?.value||"⭐").trim()||"⭐";
+    const color=$("decl-color")?.value||"#facc15";
+    if(!gid||gid<1){ toast("GID harus > 0"); return; }
+    UNIT_TYPES.push({id:"u"+Date.now(), gid, label:name, emoji, color});
+    $("unit-add-form").style.display="none";
+    renderUnitDeclarations();
+    updateStartBtn();
+    toast(`✅ Unit "${name}" (GID ${gid}) ditambahkan`);
+  });
+
+  // Init unit panel with registry source + place mode
+  setPlaceMode('unit');
+  setUnitSource('registry');
+  refreshItemTilesets();
+
+  // Unit undo / clear
+  $('btn-unit-undo')?.addEventListener('click', async () => {
+    const res = await rpc('undo_custom_unit', {});
+    if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderUnitPosList(); }
+  });
+  $('btn-unit-clear')?.addEventListener('click', async () => {
+    const res = await rpc('clear_custom_units', {});
+    if (res?.snapshot) { S.snap = res.snapshot; redraw(); renderUnitPosList(); }
+  });
+
+  try { setupCanvasEvents(); } catch(e) { console.error('setupCanvasEvents:', e); }
+  updateStepUI();
+  // Init state from server
+  rpc("get_state_snapshot").then(r=>{
+    S.snap=r.snapshot; setStatus("Siap"); redraw();
+    // Auto-load bridge tilesets from registry on startup
+    _loadBridgeTsFromRegistry().catch(e=>console.warn('bridge init:', e));
+  }).catch(()=>setStatus("Siap"));
+
+  // Wire onclick for dynamically-present buttons
+  // btn-preview-dl is inside the modal, wire via event delegation
+  document.addEventListener("click", async function(e){
+    if(!e.target.closest("#btn-preview-dl")) return;
+    if(!_pendingTmxB64){ toast("Tidak ada data!"); return; }
+    showLoad("Menyiapkan ZIP…");
+    try{
+      const prev=$("preview-img");
+      let pngB64="";
+      // Use the high-res zip render if prepared, else fall back to display canvas
+      if(prev&&prev._zipB64) pngB64=prev._zipB64;
+      else if(prev&&prev.width>0) pngB64=prev.toDataURL("image/png").split(",")[1];
+      await _doZipDownload(_pendingTmxB64, _pendingSnap, pngB64);
+      closePreview();
+    }catch(e){ toast("❌ "+e.message); }
+    finally{ hideLoad(); }
+  });
+
+  // btn-import-terrain: show size picker first
+  const bImportTerrain=$("btn-import-terrain");
+  if(bImportTerrain) bImportTerrain.onclick=()=>{
+    if(!_importedTmxText) return;
+    // Parse original map size and suggest it
+    try{
+      const parser=new DOMParser();
+      const doc=parser.parseFromString(_importedTmxText,"application/xml");
+      const mapEl=doc.querySelector("map");
+      if(mapEl){
+        const origW=parseInt(mapEl.getAttribute("width")||"160");
+        const origH=parseInt(mapEl.getAttribute("height")||"160");
+        // Suggest sensible default (cap at 640, keep aspect ratio)
+        const maxDim=1000;
+        const scale=Math.min(1, maxDim/Math.max(origW,origH));
+        const sugW=Math.max(40,Math.round(origW*scale/20)*20);
+        const sugH=Math.max(40,Math.round(origH*scale/20)*20);
+        $("import-out-w").value=sugW;
+        $("import-out-h").value=sugH;
+        // Build preset buttons
+        const presetsEl=$("size-presets");
+        if(presetsEl){
+          presetsEl.innerHTML="";
+          const presets=[];
+          // Original (if fits)
+          if(origW<=2000&&origH<=2000) presets.push([origW,origH,"Original"]);
+          // Common sizes
+          [[160,160],[320,320],[480,480],[640,640],[800,800],[1000,1000]].forEach(([pw,ph])=>{
+            if(pw!==origW||ph!==origH) presets.push([pw,ph,`${pw}×${ph}`]);
+          });
+          // Aspect-preserved halves
+          const hw=Math.round(origW/2/20)*20, hh=Math.round(origH/2/20)*20;
+          if(hw>=40&&hh>=40&&hw<=2000&&hh<=2000) presets.push([hw,hh,"½ size"]);
+          presets.forEach(([pw,ph,label])=>{
+            const btn=document.createElement("button");
+            btn.className="btn"; btn.style.cssText="padding:5px 10px;font-size:.72rem;flex:0 0 auto";
+            btn.textContent=label==="Original"?`📐 ${pw}×${ph}`:label;
+            btn.onclick=()=>{ $("import-out-w").value=pw; $("import-out-h").value=ph; };
+            presetsEl.appendChild(btn);
+          });
+        }
+      }
+    }catch(e){}
+    const sz=$("terrain-size-opts");
+    if(sz) sz.style.display=sz.style.display==="none"?"flex":"none";
+  };
+
+  // btn-do-import-terrain: actual import with chosen size
+  document.addEventListener("click", async function(ev){
+    if(!ev.target.closest("#btn-do-import-terrain")) return;
+    if(!_importedTmxText) return;
+    const outW=parseInt($("import-out-w").value)||160;
+    const outH=parseInt($("import-out-h").value)||160;
+    showLoad(`Resize & import terrain ${outW}×${outH}…`);
+    try{
+      const res=await fetch("/import_map",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({tmx_text:_importedTmxText, target_w:outW, target_h:outH})
+      });
+      const json=await res.json();
+      if(!json.ok) throw new Error(json.error||"Import failed");
+      S.snap=json.snapshot;
+
+      // Load embedded tilesets if map has them
+      if(json.has_tilesets&&json.tilesets){
+        for(const [,ts] of Object.entries(json.tilesets)){
+          const nameMap={"AutoLight":"ground","large-rock":"wall","export_items":"items","50pCommandCenter":"units"};
+          const key=nameMap[ts.name]; if(!key) continue;
+          S.tilesets[key]=ts;
+          const img=new Image();
+          await new Promise(r=>{img.onload=r;img.onerror=r;img.src="data:image/png;base64,"+ts.png});
+          S.tileImgs[key]=img;
+        }
+        S.tilesetLoaded=!!(S.tileImgs.ground);
+      }
+
+      // Always load default tileset for height-map preview (community maps have no embedded tilesets)
+      if(!S.tilesetLoaded){
+        const pattern=parseInt($("c-ts")?.value||"5");
+        setStatus("Memuat tileset preview…");
+        await loadTilesetsAndWait(pattern);
+      }
+
+      $("c-h").value=outH; $("c-w").value=outW;
+      $("q-h").value=outH; $("q-w").value=outW;
+      S.zoomScale=1;  // reset zoom
+      // completed_step=2 means coastline+height done, can go to CC directly
+      S.completed=Math.max(S.completed, json.snapshot?.meta?.completed_step||2);
+      updateStepUI();
+      closeImport(); switchTab("wizard");
+      // Small delay then redraw so canvas is visible
+      await new Promise(r=>setTimeout(r,50));
+      redraw();
+      // Jump to step 3 (Height confirm) or 4 (CC) depending on completed_step
+      goTo(json.snapshot?.meta?.completed_step>=2 ? 3 : 1);
+      toast(`✅ Terrain ${outW}×${outH} di-import! Lanjut ke CC →`,4000);
+    }catch(e){ toast("❌ "+e.message); }
+    finally{ hideLoad(); $("import-options").style.display="none"; const sz=$("terrain-size-opts"); if(sz) sz.style.display="none"; }
+  });
+
+  const bImportAll=$("btn-import-all");
+  if(bImportAll) bImportAll.onclick=async()=>{
+    if(!_importedTmxText) return;
+    showLoad("Membaca seed pattern dari peta…");
+    try{
+      // Extract 5x5 seed grid from map
+      const res=await fetch("/extract_seed",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({tmx_text:_importedTmxText, grid_size:5})
+      });
+      const json=await res.json();
+      if(!json.ok) throw new Error(json.error||"Extract failed");
+
+      // Apply seed grid to both Wizard and Quick Generate
+      S.grid=json.grid;
+      QG.grid=json.grid.map(r=>[...r]);
+      buildSeedGrid();
+      buildQSeedGrid();
+
+      // Apply map size
+      $("c-h").value=json.height; $("c-w").value=json.width;
+      $("q-h").value=json.height; $("q-w").value=json.width;
+
+      // Load built-in tileset PNGs from TMX for canvas preview
+      await applyImportedTilesets(_importedTmxText);
+
+      $("import-options").style.display="none";
+      closeImport();
+      toast(`✅ Seed grid + ukuran ${json.width}×${json.height} dari peta diterapkan!`,3000);
+    }catch(e){ toast("❌ "+e.message); }
+    finally{ hideLoad(); }
+  };
+}
+
+try { init(); } catch(e) {
+  console.error("Init error:", e);
+  // Show error visually so user knows something went wrong
+  const sg = document.getElementById('seed-grid');
+  if(sg) sg.innerHTML = `<div style="color:#f87171;font-size:.75rem;padding:8px">Init error: ${e.message}</div>`;
+}
+</script>
+</html>
