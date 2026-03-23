@@ -1,0 +1,3481 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Tileset Wizard</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Core palette — deep navy + electric teal accent */
+  --ink:     #0a0e1a;
+  --ink1:    #111827;
+  --ink2:    #1a2236;
+  --ink3:    #222d42;
+  --line:    #2a3550;
+  --dim:     #4a5878;
+  --sub:     #7a8db0;
+  --body:    #c8d4f0;
+  --head:    #e8eeff;
+  --hi:      #00d9c8;   /* teal */
+  --hi2:     #0099ff;   /* blue */
+  --ok:      #00e676;   /* green */
+  --warn:    #ffab40;   /* amber */
+  --err:     #ff5252;   /* red */
+  --purple:  #b388ff;
+
+  /* Tile accent per type */
+  --span-c:  #00d9c8;
+  --corner-c:#ff9800;
+  --side-c:  #4caf50;
+
+  --r-sm: 6px;
+  --r:    12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  --touch: 52px;
+  --gap:   12px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
+  /* Nav heights */
+  --topbar-h:  56px;
+  --stepbar-h: 44px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  background: var(--ink);
+  color: var(--body);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── TOPBAR ──────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  height: var(--topbar-h);
+  padding: 0 16px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--ink1);
+  gap: 12px;
+  position: relative;
+  z-index: 10;
+}
+.topbar::after {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hi) 30%, var(--hi2) 70%, transparent);
+  opacity: .5;
+}
+.topbar-back {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .72rem;
+  color: var(--dim);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  letter-spacing: .02em;
+  transition: color .15s;
+}
+.topbar-back:active { color: var(--hi); }
+.topbar-wordmark {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: var(--head);
+}
+.topbar-wordmark span {
+  color: var(--hi);
+}
+
+/* ── STEP BAR ─────────────────────────────────────────────── */
+.stepbar {
+  display: flex;
+  height: var(--stepbar-h);
+  flex-shrink: 0;
+  background: var(--ink1);
+  border-bottom: 1px solid var(--line);
+  padding: 0 4px;
+  gap: 2px;
+}
+.step-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+  padding: 0 4px;
+  transition: .15s;
+}
+.step-item::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 8px; right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background .2s;
+}
+.step-item.active::after  { background: var(--hi); }
+.step-item.done::after    { background: var(--ok); }
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .7rem;
+  font-weight: 700;
+  background: var(--ink3);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  flex-shrink: 0;
+  transition: .2s;
+}
+.step-item.active .step-num {
+  background: var(--hi);
+  border-color: var(--hi);
+  color: var(--ink);
+}
+.step-item.done .step-num {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--ink);
+}
+.step-lbl {
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.step-item.active .step-lbl { color: var(--hi); }
+.step-item.done   .step-lbl { color: var(--ok); }
+
+/* ── SCROLL BODY ──────────────────────────────────────────── */
+.scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 14px calc(16px + var(--safe-b));
+  overscroll-behavior: contain;
+}
+
+/* ── CARD ─────────────────────────────────────────────────── */
+.card {
+  background: var(--ink2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-bottom: var(--gap);
+}
+.card--accent {
+  border-color: color-mix(in srgb, var(--hi) 40%, transparent);
+  background: color-mix(in srgb, var(--hi) 4%, var(--ink2));
+}
+.card--ok {
+  border-color: color-mix(in srgb, var(--ok) 30%, transparent);
+  background: color-mix(in srgb, var(--ok) 3%, var(--ink2));
+}
+.card-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.card-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.card-title {
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--head);
+  flex: 1;
+  min-width: 0;
+}
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── MONO LABEL ────────────────────────────────────────────── */
+.mono-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .65rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+  display: block;
+}
+
+/* ── DIVIDER ─────────────────────────────────────────────── */
+.divider {
+  height: 1px;
+  background: var(--line);
+  margin: 12px 0;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--touch);
+  padding: 0 20px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--ink3);
+  color: var(--body);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: .01em;
+  touch-action: manipulation;
+  transition: opacity .12s, background .12s, border-color .12s, transform .1s;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.btn:active { opacity: .75; transform: scale(.98); }
+.btn:disabled { opacity: .3; pointer-events: none; }
+.btn-full { width: 100%; }
+
+/* Primary — teal glow */
+.btn-primary {
+  background: var(--hi);
+  border-color: var(--hi);
+  color: var(--ink);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--hi) 35%, transparent);
+}
+.btn-primary:active { box-shadow: none; }
+
+/* Success */
+.btn-ok {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--ink);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+/* Ghost */
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+}
+.btn-ghost:active { color: var(--hi); }
+
+/* Outline accent */
+.btn-outline {
+  background: transparent;
+  border-color: var(--hi);
+  color: var(--hi);
+}
+
+/* Small */
+.btn-sm {
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: .78rem;
+}
+
+/* Icon only */
+.btn-icon {
+  min-height: 38px;
+  width: 38px;
+  padding: 0;
+  border-radius: var(--r-sm);
+}
+
+/* ── SEGMENTED BUTTON ────────────────────────────────────── */
+.seg-group {
+  display: flex;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  gap: 0;
+}
+.seg {
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-right: 1px solid var(--line);
+  transition: .15s;
+  touch-action: manipulation;
+}
+.seg:last-child { border-right: none; }
+.seg.on {
+  background: color-mix(in srgb, var(--hi) 15%, transparent);
+  color: var(--hi);
+}
+.seg:active { opacity: .7; }
+
+/* ── COUNTER ─────────────────────────────────────────────── */
+.counter {
+  display: flex;
+  align-items: stretch;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  height: 44px;
+}
+.counter-btn {
+  width: 44px;
+  border: none;
+  background: var(--ink3);
+  color: var(--body);
+  font-size: 1.2rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background .12s;
+  flex-shrink: 0;
+}
+.counter-btn:active { background: color-mix(in srgb, var(--hi) 20%, var(--ink3)); }
+.counter-val {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--hi);
+}
+
+/* ── CHIP / BADGE ────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.chip-teal   { color: var(--hi);   border-color: color-mix(in srgb, var(--hi) 40%, transparent);   background: color-mix(in srgb, var(--hi) 10%, transparent); }
+.chip-ok     { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, transparent);   background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.chip-warn   { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.chip-err    { color: var(--err);  border-color: color-mix(in srgb, var(--err) 40%, transparent);  background: color-mix(in srgb, var(--err) 10%, transparent); }
+.chip-dim    { color: var(--sub);  border-color: var(--line); background: var(--ink3); }
+
+/* ── FORM ────────────────────────────────────────────────── */
+.field-grid { display: grid; gap: 10px; margin-bottom: 12px; }
+.field-grid.c3 { grid-template-columns: 1fr 1fr 1fr; }
+.field-grid.c2 { grid-template-columns: 1fr 1fr; }
+.field label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .62rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  display: block;
+  margin-bottom: 5px;
+}
+.field input, .field select {
+  width: 100%;
+  height: 48px;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--head);
+  padding: 0 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .88rem;
+  transition: border-color .15s;
+}
+.field input:focus, .field select:focus {
+  outline: none;
+  border-color: var(--hi);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hi) 15%, transparent);
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  cursor: pointer;
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--body);
+}
+.check-row input[type=checkbox] {
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  accent-color: var(--hi);
+  flex-shrink: 0;
+}
+
+/* ── DROP ZONE ───────────────────────────────────────────── */
+.drop-zone {
+  border: 2px dashed var(--line);
+  border-radius: var(--r-lg);
+  padding: 36px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  width: 100%;
+  background: var(--ink);
+  display: block;
+}
+.drop-zone:active, .drop-zone.over {
+  border-color: var(--hi);
+  background: color-mix(in srgb, var(--hi) 5%, var(--ink));
+}
+.dz-icon { font-size: 3rem; margin-bottom: 10px; display: block; }
+.dz-title { font-size: .95rem; font-weight: 700; color: var(--head); margin-bottom: 4px; }
+.dz-sub { font-size: .75rem; color: var(--dim); }
+
+/* ── TMX ITEM ────────────────────────────────────────────── */
+.ts-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  margin-bottom: 8px;
+  min-height: var(--touch);
+  touch-action: manipulation;
+  transition: border-color .15s, background .15s;
+}
+.ts-pick-item:active {
+  border-color: var(--hi);
+  background: color-mix(in srgb, var(--hi) 5%, var(--ink));
+}
+.ts-pick-name { font-weight: 700; font-size: .88rem; color: var(--head); }
+.ts-pick-sub  { font-size: .7rem; color: var(--dim); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
+
+/* ── TYPE GRID ───────────────────────────────────────────── */
+.type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.type-card {
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  padding: 20px 10px;
+  cursor: pointer;
+  text-align: center;
+  background: var(--ink);
+  transition: all .15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 120px;
+  touch-action: manipulation;
+}
+.type-card:active { transform: scale(.97); }
+.type-card.selected {
+  border-color: var(--hi);
+  background: color-mix(in srgb, var(--hi) 8%, var(--ink));
+  box-shadow: 0 0 20px color-mix(in srgb, var(--hi) 15%, transparent);
+}
+.tc-icon  { font-size: 2.2rem; }
+.tc-label { font-size: .88rem; font-weight: 800; color: var(--head); letter-spacing: -.01em; }
+.tc-desc  { font-size: .68rem; color: var(--dim); line-height: 1.4; }
+
+/* ── HINT ────────────────────────────────────────────────── */
+.hint {
+  font-size: .78rem;
+  color: var(--sub);
+  line-height: 1.65;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--hi2) 6%, var(--ink2));
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--hi);
+  margin-bottom: var(--gap);
+}
+
+/* ── SHEET PREVIEW ───────────────────────────────────────── */
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.preview-stats {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .68rem;
+  color: var(--dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zoom-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--ink);
+  color: var(--body);
+  cursor: pointer;
+  font-size: 1rem;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.zoom-btn:active { background: var(--ink3); }
+.zoom-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .8rem;
+  color: var(--sub);
+  min-width: 28px;
+  text-align: center;
+}
+.sel-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: .15s;
+}
+.sel-btn.on {
+  border-color: var(--hi);
+  color: var(--hi);
+  background: color-mix(in srgb, var(--hi) 10%, transparent);
+}
+.sheet-wrap {
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+  max-height: 52dvh;
+}
+.sheet-img    { display: block; image-rendering: pixelated; max-width: none; }
+.sheet-overlay { position: absolute; top: 0; left: 0; image-rendering: pixelated; cursor: crosshair; pointer-events: none; }
+
+/* ── SELECTION BAR ───────────────────────────────────────── */
+.sel-bar {
+  display: none;
+  background: color-mix(in srgb, var(--hi) 8%, var(--ink2));
+  border: 1px solid color-mix(in srgb, var(--hi) 40%, transparent);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+.sel-bar.visible { display: block; }
+.sel-bar-row { display: flex; align-items: center; gap: 8px; }
+.sel-count-lbl {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--hi);
+  flex: 1;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.sel-prev-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
+
+/* ── SPINNER ─────────────────────────────────────────────── */
+.spinner {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .72rem;
+  color: var(--dim);
+}
+.spinner.visible { display: flex; }
+.spin-ring {
+  width: 14px; height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--hi);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── TILE GRID ───────────────────────────────────────────── */
+.tile-grid-wrap {
+  background: var(--ink);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tile-grid { /* layout set by JS */ }
+.tile-cell {
+  cursor: pointer;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  position: relative;
+  overflow: hidden;
+  touch-action: manipulation;
+  transition: border-color .1s;
+}
+.tile-cell:active { opacity: .7; }
+.tile-cell.selected { border-color: var(--hi) !important; }
+.tile-cell img { display: block; image-rendering: pixelated; width: 100%; height: 100%; }
+.tile-badge {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  font-size: 5px;
+  font-weight: 700;
+  text-align: center;
+  background: rgba(0,0,0,.75);
+  color: #fff;
+  line-height: 1.6;
+  pointer-events: none;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── STATUS ROW ──────────────────────────────────────────── */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.status-name {
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--head);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── BRIDGE VARIANT BUTTONS ──────────────────────────────── */
+.var-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.var-btn {
+  flex: 1;
+  min-height: 52px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--ink);
+  color: var(--dim);
+  cursor: pointer;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: .8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  touch-action: manipulation;
+  transition: .15s;
+}
+.var-btn.on {
+  border-color: var(--hi);
+  color: var(--hi);
+  background: color-mix(in srgb, var(--hi) 10%, var(--ink));
+}
+.var-btn-sub { font-size: .6rem; color: var(--dim); font-weight: 500; }
+.var-btn.on .var-btn-sub { color: color-mix(in srgb, var(--hi) 60%, var(--dim)); }
+
+/* ── CUSTOM BUILDER ──────────────────────────────────────── */
+.builder-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.builder-title {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--head);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.grid-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ctrl-lbl {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .65rem;
+  color: var(--dim);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.custom-grid-scroll { overflow: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
+
+/* ── ROLE PICKER INLINE ──────────────────────────────────── */
+.role-picker-inline {
+  background: var(--ink);
+  border: 1px solid var(--hi);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  margin-top: 8px;
+  box-shadow: 0 8px 32px rgba(0, 217, 200, .1);
+}
+.role-picker-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .65rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 8px;
+}
+.role-opts { display: flex; flex-wrap: wrap; gap: 5px; }
+.role-opt {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid;
+  background: transparent;
+  cursor: pointer;
+  font-size: .75rem;
+  font-weight: 700;
+  touch-action: manipulation;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── BRIDGE VISUAL GRID ──────────────────────────────────── */
+#bridge-visual-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+#bridge-visual-grid > div { aspect-ratio: 1; }
+
+/* ── TERRAIN LEVEL ROW ───────────────────────────────────── */
+.level-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.level-row:last-child { border-bottom: none; }
+.level-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.level-name { font-size: .85rem; font-weight: 600; color: var(--head); }
+.level-sub  { font-size: .65rem; color: var(--dim); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
+.level-thumb {
+  width: 48px; height: 48px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--ink);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.level-thumb img { image-rendering: pixelated; }
+.level-assign {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: .75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  touch-action: manipulation;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  transition: .15s;
+}
+.level-assign.done   { border-color: var(--ok);   color: var(--ok); }
+.level-assign.active { border-color: var(--hi);   color: var(--hi);
+                       background: color-mix(in srgb, var(--hi) 8%, transparent); }
+
+/* ── HEIGHT CHIPS ────────────────────────────────────────── */
+.hchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  font-size: .72rem;
+  font-weight: 700;
+  margin: 2px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  touch-action: manipulation;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.hchip.active { border-color: currentColor; }
+
+/* ── BRIDGE ROLE ROW ─────────────────────────────────────── */
+.b-role-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--ink);
+  min-height: var(--touch);
+  transition: .12s;
+  touch-action: manipulation;
+  margin-bottom: 5px;
+}
+.b-role-row:active { opacity: .7; }
+.b-role-row.active { border-color: var(--hi); background: color-mix(in srgb, var(--hi) 6%, var(--ink)); }
+.b-role-row.done   { border-color: var(--ok); }
+.b-role-thumb {
+  width: 44px; height: 44px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: var(--ink3);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.b-role-thumb img { image-rendering: pixelated; }
+.b-role-label { font-size: .85rem; font-weight: 700; color: var(--head); font-family: 'IBM Plex Mono', monospace; }
+.b-role-desc  { font-size: .68rem; color: var(--dim); margin-top: 2px; }
+.b-role-badge { font-size: .65rem; padding: 2px 8px; border-radius: 999px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.b-group-hdr  {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .62rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 10px 2px 4px;
+}
+
+/* ── AUTOLIGHT REF ───────────────────────────────────────── */
+#autolight-ref-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.ref-level {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  background: var(--ink);
+  border-radius: var(--r-sm);
+  font-size: .72rem;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.ref-block {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 1px;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ref-block img { display: block; image-rendering: pixelated; }
+
+/* ── TERRAIN PREVIEW ─────────────────────────────────────── */
+.terrain-preview-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.terrain-preview-row:last-child { border-bottom: none; }
+.terrain-block {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 1px; border-radius: 3px; overflow: hidden; flex-shrink: 0;
+}
+.terrain-block img { display: block; image-rendering: pixelated; }
+.badge-conf { font-size: .65rem; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+.conf-high { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.conf-mid  { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.conf-low  { background: color-mix(in srgb, var(--err) 15%, transparent); color: var(--err); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .68rem; font-weight: 700;
+       background: color-mix(in srgb, var(--hi) 10%, transparent); color: var(--hi); font-family: 'IBM Plex Mono', monospace; }
+.tag.green  { background: color-mix(in srgb, var(--ok) 10%, transparent); color: var(--ok); }
+.tag.yellow { background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--warn); }
+.tag.red    { background: color-mix(in srgb, var(--err) 10%, transparent); color: var(--err); }
+
+/* ── REGISTRY ────────────────────────────────────────────── */
+.reg-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.reg-item:last-child { border-bottom: none; }
+.reg-thumb {
+  width: 48px; height: 48px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  overflow: hidden; flex-shrink: 0;
+  background: var(--ink);
+  image-rendering: pixelated;
+}
+.reg-info { flex: 1; min-width: 0; }
+.reg-name { font-size: .88rem; font-weight: 700; color: var(--head);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reg-sub  { font-size: .68rem; color: var(--dim); margin-top: 2px;
+            font-family: 'IBM Plex Mono', monospace; }
+.reg-active {
+  font-size: .62rem; padding: 2px 8px; border-radius: 999px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+  color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 8%, transparent);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.reg-btns { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ── SAVE SUMMARY ────────────────────────────────────────── */
+.save-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; font-size: .85rem;
+  border-bottom: 1px solid var(--line);
+}
+.save-row:last-child { border-bottom: none; }
+.save-lbl { color: var(--dim); width: 80px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: .75rem; }
+.save-val { font-weight: 700; color: var(--head); }
+
+/* ── PROGRESS ────────────────────────────────────────────── */
+.progress { height: 3px; background: var(--line); border-radius: 2px; margin: 6px 0; }
+.progress-bar { height: 100%; border-radius: 2px; background: var(--hi); transition: width .3s; }
+
+/* ── SECTION LABEL ───────────────────────────────────────── */
+.sec-lbl {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .62rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── BRIDGE CELL ─────────────────────────────────────────── */
+.bridge-cell {
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  border: 2px solid var(--line);
+  background: var(--ink);
+  position: relative;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.bridge-cell img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.bridge-cell-lbl {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  font-size: 5px; text-align: center;
+  background: rgba(0,0,0,.75); color: #fff;
+  padding: 1px 0; pointer-events: none; line-height: 1.4;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── PICKER BOTTOM SHEET ─────────────────────────────────── */
+.picker-sheet {
+  position: fixed; inset: 0;
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.picker-sheet.open { display: flex; }
+.picker-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+.picker-panel {
+  position: relative;
+  z-index: 1;   /* above backdrop */
+  background: var(--ink1);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  max-height: 78dvh;
+  display: flex; flex-direction: column;
+  padding-bottom: var(--safe-b);
+  animation: slideUp .25s cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.picker-handle {
+  width: 40px; height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 12px auto 0;
+  flex-shrink: 0;
+}
+.picker-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.picker-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--hi);
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: .02em;
+}
+.picker-close {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 1.1rem; min-height: 36px; min-width: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm);
+  transition: color .15s;
+}
+.picker-close:active { color: var(--hi); }
+.picker-body {
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 12px 14px;
+  flex: 1;
+}
+
+/* ── TOAST ───────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: calc(20px + var(--safe-b));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ok);
+  color: var(--ink);
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-size: .82rem;
+  font-weight: 700;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity .25s;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 88vw;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.toast.show { opacity: 1; }
+.toast.err { background: var(--err); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <a href="/" class="topbar-back">← Peta</a>
+  <div class="topbar-wordmark">Tile<span>Wizard</span></div>
+</div>
+
+<!-- STEP BAR -->
+<div class="stepbar">
+  <div class="step-item active" id="mstep1" onclick="goStep(1)">
+    <div class="step-num">1</div>
+    <div class="step-lbl">Upload</div>
+  </div>
+  <div class="step-item" id="mstep2" onclick="goStep(2)">
+    <div class="step-num">2</div>
+    <div class="step-lbl">Setup</div>
+  </div>
+  <div class="step-item" id="mstep3" onclick="goStep(3)">
+    <div class="step-num">3</div>
+    <div class="step-lbl">Mapping</div>
+  </div>
+  <div class="step-item" id="mstep4" onclick="goStep(4)">
+    <div class="step-num">4</div>
+    <div class="step-lbl">Simpan</div>
+  </div>
+</div>
+
+<!-- SCROLL BODY -->
+<div class="scroll-body" id="main-scroll">
+
+  <!-- ══ STEP 1 ══ -->
+  <div id="step1">
+    <input type="hidden" id="ts-name">
+
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-icon">📁</span>
+        <span class="card-title">Upload Tileset</span>
+      </div>
+      <button class="drop-zone" id="drop-zone"
+        onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input"
+          accept="image/png,.png,.tmx,text/xml,*/*" style="display:none">
+        <div id="drop-label">
+          <span class="dz-icon">🖼️</span>
+          <div class="dz-title">Tap untuk pilih file</div>
+          <div class="dz-sub">PNG tileset · TMX dengan embedded tileset</div>
+        </div>
+      </button>
+
+      <div id="name-field-wrap" style="display:none;margin-top:12px">
+        <div class="field">
+          <label>Nama Tileset</label>
+          <input type="text" id="ts-name-visible" placeholder="nama tileset"
+            oninput="document.getElementById('ts-name').value=this.value;
+                     document.getElementById('save-name').value=this.value;
+                     document.getElementById('sb-name').textContent=this.value||'—'">
+        </div>
+      </div>
+
+      <div id="tmx-ts-picker" style="display:none;margin-top:12px">
+        <div class="hint">TMX berisi beberapa tileset — pilih satu:</div>
+        <div id="tmx-ts-list"></div>
+      </div>
+    </div>
+
+    <div class="card" id="type-card" style="display:none">
+      <div class="card-hdr">
+        <span class="card-icon">🎯</span>
+        <span class="card-title">Fungsi tileset ini?</span>
+      </div>
+      <div class="type-grid">
+        <div class="type-card" onclick="selectType('terrain')" id="tc-terrain">
+          <div class="tc-icon">🌍</div>
+          <div class="tc-label">Terrain</div>
+          <div class="tc-desc">Ganti tampilan AutoLight</div>
+        </div>
+        <div class="type-card" onclick="selectType('bridge')" id="tc-bridge">
+          <div class="tc-icon">🌉</div>
+          <div class="tc-label">Bridge</div>
+          <div class="tc-desc">Jembatan di atas air</div>
+        </div>
+        <div class="type-card" onclick="selectType('unit')" id="tc-unit">
+          <div class="tc-icon">🎮</div>
+          <div class="tc-label">Custom Unit</div>
+          <div class="tc-desc">Sprite unit / struktur</div>
+        </div>
+        <div class="type-card" onclick="selectType('items')" id="tc-items">
+          <div class="tc-icon">🏗️</div>
+          <div class="tc-label">Custom Items</div>
+          <div class="tc-desc">Dekorasi / props</div>
+        </div>
+      </div>
+      <div id="type-hint" style="margin-top:10px"></div>
+    </div>
+
+    <div id="step1-next" style="display:none">
+      <button class="btn btn-primary btn-full" onclick="goStep(2)">
+        Lanjut: Setup →
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ STEP 2 ══ -->
+  <div id="step2" style="display:none">
+
+    <div class="status-row" id="status-bar" style="display:none">
+      <span class="status-name" id="sb-name">—</span>
+      <span class="chip chip-teal" id="sb-type" style="display:none"></span>
+      <span style="font-size:.7rem;color:var(--dim);font-family:'IBM Plex Mono',monospace" id="sb-prog"></span>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-icon">⚙️</span>
+        <span class="card-title">Parameter Tile</span>
+      </div>
+      <div class="field-grid c3">
+        <div class="field">
+          <label>Kolom</label>
+          <input type="number" id="ts-cols" value="3" min="1" max="64"
+            inputmode="numeric" oninput="onParamChange()">
+        </div>
+        <div class="field">
+          <label>Lebar px</label>
+          <input type="number" id="ts-tw" value="20" min="8" max="128"
+            inputmode="numeric" oninput="onParamChange()">
+        </div>
+        <div class="field">
+          <label>Tinggi px</label>
+          <input type="number" id="ts-th" value="20" min="8" max="128"
+            inputmode="numeric" oninput="onParamChange()">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="preview-bar">
+        <span class="preview-stats" id="sheet-stats"></span>
+        <button id="btn-sel-mode" class="sel-btn" onclick="toggleSelMode()">◻ Pilih</button>
+        <button class="zoom-btn" onclick="zoom(-1)">−</button>
+        <span class="zoom-val" id="zoom-label">1×</span>
+        <button class="zoom-btn" onclick="zoom(+1)">+</button>
+      </div>
+
+      <div class="sheet-wrap" id="sheet-canvas-wrap">
+        <img id="sheet-img-display" class="sheet-img" style="display:none" draggable="false">
+        <canvas id="sheet-canvas" class="sheet-overlay"></canvas>
+        <div id="tile-tooltip" style="display:none;position:fixed;
+          background:rgba(10,14,26,.95);color:#c8d4f0;
+          font-family:'IBM Plex Mono',monospace;
+          font-size:.68rem;padding:5px 10px;border-radius:6px;
+          pointer-events:none;z-index:99;
+          border:1px solid var(--hi);"></div>
+      </div>
+
+      <div class="sel-bar" id="sel-toolbar">
+        <div class="sel-bar-row">
+          <span class="sel-count-lbl">⬡ <span id="sel-count">0</span> dipilih</span>
+          <button class="btn btn-sm btn-ghost" onclick="selClear()">✕ Batal</button>
+          <button class="btn btn-sm btn-outline" onclick="selConfirm()">▶ Gunakan</button>
+        </div>
+        <div class="sel-prev-row" id="sel-preview"></div>
+      </div>
+
+      <div class="spinner" id="tiles-loading">
+        <div class="spin-ring"></div>
+        <span id="tiles-loading-text">Menganalisis tile…</span>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="btn-step2-next"
+      onclick="goStep(3)" disabled>Lanjut: Mapping →</button>
+  </div>
+
+  <!-- ══ STEP 3 ══ -->
+  <div id="step3" style="display:none">
+
+    <!-- Terrain -->
+    <div id="map-terrain" style="display:none">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-icon">🌍</span>
+          <span class="card-title">Terrain Mapping</span>
+          <div class="card-actions">
+            <button class="btn btn-sm btn-outline" id="btn-autosuggest"
+              onclick="autoSuggestTerrain()">✨ Auto</button>
+            <button class="btn btn-sm btn-ghost" onclick="clearTerrainMapping()">🗑</button>
+            <button class="btn btn-sm btn-ghost" onclick="toggleRef()">📖</button>
+          </div>
+        </div>
+        <span class="chip chip-dim" id="terrain-map-status" style="display:none"></span>
+
+        <div class="card card--accent" id="autolight-ref-card"
+          style="display:none;margin-bottom:0;margin-top:4px">
+          <div class="hint" style="margin-bottom:8px">
+            Contoh AutoLight benar — NW/N/NE/W/center/E/SW/S/SE tiap level.
+          </div>
+          <div id="autolight-ref-grid"></div>
+        </div>
+      </div>
+
+      <div class="card" style="background:color-mix(in srgb,var(--hi2) 4%,var(--ink2));
+           border-color:color-mix(in srgb,var(--hi2) 20%,transparent)">
+        <div class="sec-lbl">📊 Skema Height</div>
+        <div id="height-ref-chips"></div>
+        <div style="font-size:.65rem;color:var(--dim);margin-top:6px;
+             font-family:'IBM Plex Mono',monospace">
+          Default: 7 level darat · 3 level ocean
+        </div>
+      </div>
+
+      <div id="terrain-visual-grid"></div>
+    </div>
+
+    <!-- Bridge -->
+    <div id="map-bridge" style="display:none">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-icon">🌉</span>
+          <span class="card-title">Bridge Layout</span>
+          <div class="card-actions">
+            <span style="font-size:.65rem;color:var(--dim);font-family:'IBM Plex Mono',monospace">
+              <span style="color:var(--span-c)">■</span>Span
+              <span style="color:var(--corner-c);margin-left:4px">■</span>Corner
+              <span style="color:var(--side-c);margin-left:4px">■</span>Side
+            </span>
+            <button class="btn btn-sm btn-ghost" onclick="clearBridgeLayout()">🗑</button>
+            <span id="bridge-map-count"
+              style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--dim)"></span>
+          </div>
+        </div>
+
+        <div class="sec-lbl">Mode Layout</div>
+        <div class="var-row">
+          <button id="bv-simple" class="var-btn on" onclick="setBridgeVariant('simple')">
+            Simple<div class="var-btn-sub">3 kategori</div>
+          </button>
+          <button id="bv-12" class="var-btn" onclick="setBridgeVariant('12')">
+            12-tile<div class="var-btn-sub">Preset lengkap</div>
+          </button>
+        </div>
+        <div id="variant-desc" style="font-size:.72rem;color:var(--sub);margin-top:6px;
+             padding:8px 10px;background:rgba(0,229,212,.05);border-radius:6px;
+             border-left:2px solid var(--hi);font-family:'IBM Plex Mono',monospace;
+             line-height:1.6"></div>
+
+        <!-- Custom builder -->
+        <!-- Simple 3-category builder (shown for 'simple' variant) -->
+        <div id="simple-layout-builder" style="display:none">
+          <div class="divider"></div>
+          <div class="builder-title">🔧 Simple Layout</div>
+
+          <!-- Orientation -->
+          <div class="sec-lbl">Orientasi</div>
+          <div class="seg-group" style="margin-bottom:12px">
+            <button id="sl-dir-H" class="seg on" onclick="setSimpleDir('H')">↔ Horizontal</button>
+            <button id="sl-dir-V" class="seg"    onclick="setSimpleDir('V')">↕ Vertikal</button>
+          </div>
+
+          <!-- Row × Col counters -->
+          <div class="grid-controls" style="margin-bottom:12px">
+            <div>
+              <div class="ctrl-lbl">Baris bridge</div>
+              <div class="counter">
+                <button class="counter-btn" onclick="adjSimpleRows(-1)">−</button>
+                <span class="counter-val" id="sl-rows-val">2</span>
+                <button class="counter-btn" onclick="adjSimpleRows(+1)">+</button>
+              </div>
+            </div>
+            <div>
+              <div class="ctrl-lbl">Kolom endcap</div>
+              <div class="counter">
+                <button class="counter-btn" onclick="adjSimpleCap(-1)">−</button>
+                <span class="counter-val" id="sl-cap-val">1</span>
+                <button class="counter-btn" onclick="adjSimpleCap(+1)">+</button>
+              </div>
+            </div>
+            <div>
+              <div class="ctrl-lbl">Kolom span</div>
+              <div class="counter">
+                <button class="counter-btn" onclick="adjSimpleSpan(-1)">−</button>
+                <span class="counter-val" id="sl-span-val">1</span>
+                <button class="counter-btn" onclick="adjSimpleSpan(+1)">+</button>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:.68rem;color:var(--dim);margin-bottom:10px;
+               font-family:'IBM Plex Mono',monospace;line-height:1.6">
+            Endcap: N kolom terdepan/terbelakang bridge.<br>
+            Span: unit berulang (≥2 = A B A B…)
+          </div>
+
+          <!-- Mirror toggle -->
+          <div class="toggle-row" style="margin-bottom:12px">
+            <span style="font-size:.82rem">Auto-mirror Endcap Kanan</span>
+            <label class="toggle">
+              <input type="checkbox" id="sl-mirror" checked onchange="_simple.mirror=this.checked;_renderSimpleSlots()">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div style="font-size:.68rem;color:var(--dim);margin-bottom:10px;
+               font-family:'IBM Plex Mono',monospace">
+            Mirror ON: Endcap Kanan = flip horizontal dari Endcap Kiri (tidak perlu assign ulang)
+          </div>
+
+          <!-- 3 category slots -->
+          <div id="simple-slots"></div>
+        </div>
+
+
+      </div>
+
+      <div class="hint">
+        Tap tile di grid untuk assign.
+        <b>6-tile</b>: span saja. <b>12-tile</b>: +corner/border.
+        <b>Kustom</b>: posisi bebas, rule adjacency-aware.
+      </div>
+
+      <div class="card">
+        <div id="bridge-visual-grid"></div>
+      </div>
+    </div>
+
+    <!-- Unit / Items -->
+    <div id="map-unit-items" style="display:none">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-icon">🎮</span>
+          <span class="card-title" id="ui-type-label">Unit</span>
+        </div>
+        <div class="hint">Tidak perlu mapping — tile langsung bisa dipilih saat penempatan di peta.</div>
+        <div class="tile-grid-wrap" style="max-height:340px">
+          <div class="tile-grid" id="ui-picker-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="btn-step3-next"
+      onclick="goStep(4)" style="margin-bottom:10px">Lanjut: Simpan →</button>
+  </div>
+
+  <!-- ══ STEP 4 ══ -->
+  <div id="step4" style="display:none">
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-icon">💾</span>
+        <span class="card-title">Simpan ke Registry</span>
+      </div>
+      <div id="step4-summary" style="margin-bottom:14px"></div>
+      <div class="field-grid c2">
+        <div class="field">
+          <label>Nama</label>
+          <input type="text" id="save-name" placeholder="nama tileset">
+        </div>
+        <div class="field">
+          <label>Tipe</label>
+          <input type="text" id="save-type" readonly>
+        </div>
+      </div>
+      <label class="check-row">
+        <input type="checkbox" id="activate-after-save" checked>
+        Langsung aktifkan setelah disimpan
+      </label>
+      <div style="margin-top:14px">
+        <button class="btn btn-ok btn-full" id="btn-save" onclick="saveAndActivate()">
+          ✅ Simpan &amp; Aktifkan
+        </button>
+      </div>
+    </div>
+
+    <div id="save-result"></div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-icon">📦</span>
+        <span class="card-title">Registry</span>
+        <div class="card-actions">
+          <button class="btn btn-sm btn-ghost" onclick="loadRegistryList()">↻ Refresh</button>
+        </div>
+      </div>
+      <div id="registry-list">
+        <div style="font-size:.78rem;color:var(--dim);font-family:'IBM Plex Mono',monospace">Memuat…</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /scroll-body -->
+
+<!-- PICKER BOTTOM SHEET -->
+<div id="picker-sheet" class="picker-sheet">
+  <div class="picker-backdrop" onclick="closePicker()"></div>
+  <div class="picker-panel" onclick="event.stopPropagation()">
+    <div class="picker-handle"></div>
+    <div class="picker-header">
+      <span class="picker-title" id="shared-picking-for">Pilih tile</span>
+      <button class="picker-close" onclick="closePicker()">✕</button>
+    </div>
+    <div class="picker-body">
+      <div class="tile-grid-wrap" style="max-height:54dvh">
+        <div class="tile-grid" id="shared-picker-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Compat aliases -->
+<div id="shared-picker-card" style="display:none"></div>
+<div class="toast" id="toast"></div>
+<div style="display:none">
+  <button id="tab1"></button><button id="tab2"></button>
+  <button id="tab3"></button><button id="tab4"></button>
+</div>
+
+<script>
+const API = window.location.origin;
+
+// ── DOM cache (query once, reuse everywhere) ──────────────
+const $  = id => document.getElementById(id);
+const EL = {}; // populated lazily after DOM ready
+function el(id) { return EL[id] ?? (EL[id] = $(id)); }
+
+// ── Global state ──────────────────────────────────────────
+const W = {
+  step: 1, type: null,
+  pngB64: null, tilecount: 0, columns: 3, tileW: 20, tileH: 20,
+  tilesB64: [], metrics: [], bridgeHints: [],
+  terrainMapping: {},       // level → center local_id
+  terrainBlockOverride: {}, // level → [14 local_ids] (manual full override)
+  terrainPickingLevel: null,
+  bridgeMapping: {}, bridgePickingRole: null,
+  bridgeVariant: '12', // '6'=span-only | '12'=full corners+borders
+  zoomLevel: 1,
+  // Active override edit: {level, slotIndex (0-13)}
+  _editingOverride: null,
+};
+
+// ── Helpers ───────────────────────────────────────────────
+
+// Show/hide an element (null-safe)
+function show(id, visible = true) {
+  const e = el(id); if (e) e.style.display = visible ? '' : 'none';
+}
+
+// Set text on an element (null-safe)
+function setText(id, txt) {
+  const e = el(id); if (e) e.textContent = txt;
+}
+
+// DocumentFragment batch-append
+function frag(items, buildFn) {
+  const f = document.createDocumentFragment();
+  items.forEach((item, i) => { const node = buildFn(item, i); if (node) f.appendChild(node); });
+  return f;
+}
+
+// Show/hide picker card + scroll into view
+function _showPickerCard(cardId, labelId, msg, scrollBehavior = 'smooth') {
+  const card  = el(cardId);
+  const label = el(labelId);
+  if (!card) return;
+  if (msg) {
+    card.style.display = '';
+    if (label) label.textContent = msg;
+    card.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
+  } else {
+    card.style.display = 'none';
+    if (label) label.textContent = '';
+  }
+}
+
+// Sync name to all name fields + status bar
+function _setName(name) {
+  ['ts-name','ts-name-visible','save-name'].forEach(id => {
+    const e = el(id); if (e) e.value = name;
+  });
+  setText('sb-name', name || '—');
+}
+
+// ── Step navigation ───────────────────────────────────────
+function goStep(n) {
+  if (n > W.step && !canAdvance(W.step)) return;
+  W.step = n;
+  [1,2,3,4].forEach(i => {
+    show(`step${i}`, i === n);
+    const tab = $(`tab${i}`);
+    if (tab) { tab.classList.toggle('active', i===n); tab.classList.toggle('done', i<n); if(i<=n) tab.disabled=false; }
+    const ms = $(`mstep${i}`);
+    if (ms) { ms.classList.toggle('active', i===n); ms.classList.toggle('done', i<n); }
+  });
+  el('main-scroll')?.scrollTo(0, 0);
+  // Trigger step-specific init
+  if (n === 2) { requestAnimationFrame(() => { setText('zoom-label', _getCanvasZ() + '×'); renderSheetGrid(); }); }
+  if (n === 3) renderMappingPanel();
+  if (n === 4) { renderSavePanel(); loadRegistryList(); }
+}
+
+function canAdvance(step) {
+  if (step === 1) return !!(W.pngB64 && W.type);
+  if (step === 2) return !!W.pngB64; // allow advance even before API finishes
+  return true;
+}
+
+// ── File handling ─────────────────────────────────────────
+el('drop-zone')?.addEventListener('dragover',  e => { e.preventDefault(); el('drop-zone').style.borderColor = 'var(--accent)'; });
+el('drop-zone')?.addEventListener('dragleave', () => { if(el('drop-zone')) el('drop-zone').style.borderColor = ''; });
+el('drop-zone')?.addEventListener('drop', e => { e.preventDefault(); if(el('drop-zone')) el('drop-zone').style.borderColor=''; if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+el('file-input')?.addEventListener('change', () => { if(el('file-input').files[0]) handleFile(el('file-input').files[0]); });
+
+function handleFile(file) {
+  const reader = new FileReader();
+  if (file.name.toLowerCase().endsWith('.tmx')) {
+    reader.onload = e => parseTMXFile(e.target.result);
+    reader.readAsText(file);
+  } else {
+    reader.onload = e => {
+      W.pngB64 = e.target.result.split(',')[1];
+      el('drop-label').innerHTML = `<div style="font-size:1.5rem">✅</div><b>${file.name}</b>`;
+      _setName(file.name.replace(/\.png$/i, ''));
+      showTypeCard();
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+const BUILTIN = new Set(['AutoLight','large-rock','export_items','50pCommandCenter','export_units']);
+
+function parseTMXFile(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const customs = [...doc.querySelectorAll('tileset')].filter(ts => {
+    const name = ts.getAttribute('name') || '';
+    const fg   = parseInt(ts.getAttribute('firstgid') || '1');
+    return !BUILTIN.has(name) && fg > 349;
+  });
+  if (!customs.length) { toast('Tidak ada tileset kustom di TMX ini', true); return; }
+  if (customs.length === 1) { loadTMXTileset(customs[0]); return; }
+  const list = el('tmx-ts-list');
+  list.innerHTML = '';
+  list.appendChild(frag(customs, ts => {
+    const name = ts.getAttribute('name') || 'unknown';
+    const tc = ts.getAttribute('tilecount') || '?';
+    const tw = ts.getAttribute('tilewidth') || '20';
+    const th = ts.getAttribute('tileheight') || '20';
+    const item = document.createElement('div');
+    item.className = 'ts-pick-item';
+    item.innerHTML = `<div><b>${name}</b><div class="txt-xs txt-muted">${tc} tiles · ${tw}×${th}px</div></div>`;
+    item.onclick = () => loadTMXTileset(ts);
+    return item;
+  }));
+  show('tmx-ts-picker');
+}
+
+function loadTMXTileset(tsEl) {
+  const name = tsEl.getAttribute('name') || 'bridge';
+  const cols = parseInt(tsEl.getAttribute('columns')   || '3');
+  const tw   = parseInt(tsEl.getAttribute('tilewidth') || '20');
+  const th   = parseInt(tsEl.getAttribute('tileheight')|| '20');
+  const prop = tsEl.querySelector('property[name="embedded_png"]');
+  const png  = (prop?.getAttribute('value') || prop?.textContent || '').replace(/\s/g,'');
+  if (!png) { toast('Tileset tidak punya embedded PNG', true); return; }
+
+  W.pngB64 = png; W.columns = cols; W.tileW = tw; W.tileH = th;
+  _setName(name);
+  ['ts-cols','ts-tw','ts-th'].forEach((id,i) => { const e=el(id); if(e) e.value=[cols,tw,th][i]; });
+  el('drop-label').innerHTML = `<div style="font-size:1.5rem">✅</div><b>${name}</b> (dari TMX)`;
+  show('tmx-ts-picker', false);
+  showTypeCard(_guessType(name, tw, th));
+}
+
+function _guessType(name, tw, th) {
+  const n = name.toLowerCase();
+  if (n.includes('bridge') || n.includes('pont')) return 'bridge';
+  if (n.includes('unit')   || n.includes('tank')) return 'unit';
+  if (n.includes('item'))                          return 'items';
+  if (tw >= 32 || th >= 32)                        return 'unit';
+  return 'terrain';
+}
+
+function showTypeCard(preselect = null) {
+  show('type-card'); show('step1-next'); show('name-field-wrap'); show('status-bar');
+  setText('sb-name', el('ts-name')?.value || el('ts-name-visible')?.value || '—');
+  if (preselect) selectType(preselect);
+}
+
+// ── Type selection ────────────────────────────────────────
+const TYPE_HINTS = {
+  terrain: '🌍 <b>Terrain</b> mengganti tampilan visual AutoLight. Kamu perlu menandai tile mana = air, pasir, rumput, dll.',
+  bridge:  '🌉 <b>Bridge</b> punya role tile (H_top span wajib, corners, borders). Assign tile mana untuk tiap role.',
+  unit:    '🎮 <b>Custom Unit</b> langsung siap dipakai — pilih tile saat penempatan di peta.',
+  items:   '🏗️ <b>Custom Items</b> langsung siap dipakai — pilih tile saat penempatan di peta.',
+};
+
+function selectType(type) {
+  W.type = type;
+  document.querySelectorAll('.type-card').forEach(c => c.classList.remove('selected'));
+  el(`tc-${type}`)?.classList.add('selected');
+  const hint = el('type-hint');
+  if (hint) hint.innerHTML = `<div class="hint">${TYPE_HINTS[type]}</div>`;
+  const sbType = el('sb-type');
+  const labels = {terrain:'🌍 Terrain',bridge:'🌉 Bridge',unit:'🎮 Unit',items:'🏗️ Items'};
+  if (sbType) { sbType.textContent = labels[type]; sbType.style.display = ''; }
+  show('step1-next', !!W.pngB64);
+}
+
+// ── Step 2: sheet preview ─────────────────────────────────
+function onParamChange() {
+  W.columns  = parseInt(el('ts-cols')?.value) || 3;
+  W.tileW    = parseInt(el('ts-tw')?.value)   || 20;
+  W.tileH    = parseInt(el('ts-th')?.value)   || 20;
+  W.tilesB64 = []; W.metrics = []; W.bridgeHints = []; // invalidate tile cache only
+  // _sheetImg stays — no need to reload PNG
+  renderSheetGrid();
+}
+
+let _sheetImg = null;
+let _apiAbort  = null; // AbortController for in-flight API calls
+
+async function renderSheetGrid() {
+  if (!W.pngB64) return;
+
+  // ── 1. Load image (cached) ──────────────────────────────
+  if (!_sheetImg) {
+    _sheetImg = new Image();
+    _sheetImg.src = 'data:image/png;base64,' + W.pngB64;
+    await new Promise(r => { _sheetImg.onload = r; _sheetImg.onerror = r; });
+  }
+
+  const rows  = Math.floor(_sheetImg.height / W.tileH);
+  const cols  = W.columns;
+  W.tilecount = rows * cols;
+  setText('sheet-stats',
+    `${_sheetImg.width}×${_sheetImg.height}px · ${cols} col · ${rows} baris · ${W.tilecount} tiles`);
+
+  // ── 2. Draw instantly on canvas (no API) ─────────────────
+  // rAF ensures the canvas is visible before drawing (step panel just shown)
+  requestAnimationFrame(() => _drawSheetCanvas());
+
+  // ── 3. Enable "next" immediately — user can proceed ──────
+  const btn = el('btn-step2-next');
+  if (btn) { btn.disabled = false; btn.textContent = 'Lanjut: Mapping →'; }
+
+  // ── 4. Fetch tile PNGs + metrics in background ───────────
+  if (_apiAbort) _apiAbort.abort();
+  _apiAbort = new AbortController();
+  const sig = _apiAbort.signal;
+
+  _showLoading(true, 'Menganalisis tile…');
+  try {
+    const body = JSON.stringify({
+      png: W.pngB64, tilecount: W.tilecount,
+      columns: cols, tilewidth: W.tileW, tileheight: W.tileH,
+    });
+    const opts = { method:'POST', headers:{'Content-Type':'application/json'}, body, signal: sig };
+    const [tilesRes, metricsRes] = await Promise.all([
+      fetch(`${API}/registry/tiles`,   opts),
+      fetch(`${API}/registry/analyze`, opts),
+    ]);
+    if (sig.aborted) return;
+    const tData = await tilesRes.json();
+    const mData = await metricsRes.json();
+    if (sig.aborted) return;
+    if (tData.error) { toast(`Analisis gagal: ${tData.error}`, true); return; }
+
+    W.tilesB64    = tData.tiles;
+    W.metrics     = mData.tiles  || [];
+    W.bridgeHints = W.metrics.map(t => t.bridge_hints || {});
+    _showLoading(false);
+    // Redraw canvas with hint overlays now available
+    _drawSheetCanvas();
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      _showLoading(false);
+      toast('Gagal mengambil analisis tile — preview tetap tersedia', true);
+    }
+  }
+}
+
+function _showLoading(visible, msg) {
+  const wrap = el('tiles-loading');
+  if (!wrap) return;
+  wrap.style.display = visible ? 'flex' : 'none';
+  if (msg) setText('tiles-loading-text', msg);
+}
+
+// Draw sheet PNG on canvas with grid lines + optional hint overlay
+function _drawSheetCanvas() {
+  if (!_sheetImg || !_sheetImg.complete || !_sheetImg.naturalWidth) return;
+
+  const tw   = W.tileW;
+  const th   = W.tileH;
+  const cols = W.columns;
+  const rows = Math.floor(_sheetImg.height / th);
+  const z    = Math.max(1, W.zoomLevel); // integer zoom multiplier
+
+  // ── Step 1: Set up the <img> as the base layer ──────────────────────
+  // The browser renders it crisp with image-rendering:pixelated.
+  // Width = naturalWidth * z  → exact integer zoom, no sub-pixel distortion.
+  const imgDisplay = el('sheet-img-display');
+  if (imgDisplay) {
+    imgDisplay.src   = _sheetImg.src;
+    imgDisplay.width  = _sheetImg.width  * z;
+    imgDisplay.height = _sheetImg.height * z;
+    imgDisplay.style.display = 'block';
+  }
+
+  // ── Step 2: Overlay canvas — same size, pointer-events:none ─────────
+  const canvas = el('sheet-canvas');
+  if (!canvas) return;
+  canvas.width  = _sheetImg.width  * z;
+  canvas.height = _sheetImg.height * z;
+  // Match img display size exactly
+  canvas.style.width  = (canvas.width)  + 'px';
+  canvas.style.height = (canvas.height) + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(88,166,255,0.4)';
+  ctx.lineWidth   = 1;
+  for (let c = 0; c <= cols; c++) {
+    const x = c * tw * z;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let r = 0; r <= rows; r++) {
+    const y = r * th * z;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  // Bridge hint overlays
+  if (W.type === 'bridge' && W.bridgeHints.length) {
+    W.bridgeHints.forEach((hints, i) => {
+      const suggested = _suggestBridgeRole(hints);
+      if (!suggested) return;
+      const cr = Math.floor(i / cols), cc = i % cols;
+      ctx.fillStyle = (BRIDGE_GROUP_COLORS[suggested] || '#888') + '55';
+      ctx.fillRect(cc * tw * z, cr * th * z, tw * z, th * z);
+    });
+  }
+
+  // Selection overlay
+  _sel.tiles.forEach(id => {
+    const sc = id % cols, sr = Math.floor(id / cols);
+    ctx.fillStyle   = 'rgba(56,189,248,0.3)';
+    ctx.fillRect(sc*tw*z, sr*th*z, tw*z, th*z);
+    ctx.strokeStyle = '#58a6ff';
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(sc*tw*z+1, sr*th*z+1, tw*z-2, th*z-2);
+  });
+
+  // ── Step 3: Wire interactive events on the <img> (not overlay canvas) ─
+  const hit = imgDisplay || canvas;
+  hit.style.cursor  = _sel.active ? 'cell' : 'crosshair';
+  hit.style.pointerEvents = 'auto';  // canvas is pointer-events:none, img handles input
+
+  hit.onmousemove  = e => { _canvasHover(e, hit, cols, tw, th, z); };
+  hit.onmouseleave = () => { show('tile-tooltip', false); };
+  hit.onmousedown  = e => { if (_selHandlePointer(e, hit, true))  { _sel.dragging=true; } };
+  hit.onmouseup    = () => { _sel.dragging=false; };
+  hit.onmousemove  = e => {
+    if (_sel.active && _sel.dragging) { _selHandlePointer(e, hit, false); return; }
+    _canvasHover(e, hit, cols, tw, th, z);
+  };
+  hit.onclick = e => { if (!_sel.active) _canvasClick(e, hit, cols, tw, th, z); };
+  hit.ontouchstart = e => { if (_selHandlePointer(e, hit, true))  { _sel.dragging=true; } };
+  hit.ontouchmove  = e => { if (_sel.dragging) _selHandlePointer(e, hit, false); };
+  hit.ontouchend   = () => { _sel.dragging=false; };
+
+  // Update zoom label
+  setText('zoom-label', z + '×');
+}
+
+function _canvasTileAt(e, hitEl, cols, tw, th, z) {
+  const rect = hitEl.getBoundingClientRect();
+  // hitEl is the <img> displayed at tw*z × th*z pixels — no CSS scaling needed
+  const x = (e.clientX - rect.left);
+  const y = (e.clientY - rect.top);
+  const col = Math.floor(x / (tw * z));
+  const row = Math.floor(y / (th * z));
+  const id  = row * cols + col;
+  return (id >= 0 && id < W.tilecount) ? { id, col, row } : null;
+}
+
+function _canvasHover(e, canvas, cols, tw, th, z) {
+  const t = _canvasTileAt(e, canvas, cols, tw, th, z);
+  const tip = el('tile-tooltip');
+  if (!t || !tip) return;
+  const metrics = W.metrics[t.id];
+  const hint = metrics ? ` · ${_suggestBridgeRole(metrics.bridge_hints) || ''}` : '';
+  tip.textContent = `Tile #${t.id}  (col ${t.col}, row ${t.row})${hint}`;
+  tip.style.display = '';
+  tip.style.left = (e.clientX + 12) + 'px';
+  tip.style.top  = (e.clientY - 28) + 'px';
+}
+
+function _canvasClick(e, canvas, cols, tw, th, z) {
+  const t = _canvasTileAt(e, canvas, cols, tw, th, z);
+  if (!t) return;
+  // If we have individual tile PNGs, use the full click handler
+  if (W.tilesB64[t.id]) {
+    _onTileClick(canvas, W.type === 'bridge' ? 'bridge' : W.type, t.id, W.tilesB64[t.id]);
+    _highlightCanvasTile(canvas, t.col, t.row, tw, th, z);
+  } else {
+    // Tiles not yet loaded from API — show tile id in status
+    setText('sb-prog', `Tile #${t.id} (${t.col}, ${t.row})`);
+  }
+}
+
+function _highlightCanvasTile(canvas, col, row, tw, th, z) {
+  _drawSheetCanvas(); // redraw clean
+  const ctx = canvas.getContext('2d');
+  ctx.strokeStyle = 'var(--accent, #58a6ff)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(col * tw * z + 1, row * th * z + 1, tw * z - 2, th * z - 2);
+}
+
+function _getCanvasZ() {
+  // Simple: W.zoomLevel is the integer display zoom (1=native, 2=2x, etc.)
+  return Math.max(1, W.zoomLevel);
+}
+
+function zoom(dir) {
+  W.zoomLevel = Math.max(1, Math.min(6, W.zoomLevel + dir));
+  _drawSheetCanvas();
+}
+
+// ── Tile grid builder (shared for all pickers) ───────────
+// Uses event delegation: one listener on container instead of N per-tile handlers.
+// Uses DocumentFragment for batch DOM insertion.
+function _buildTileGrid(container, tilesB64, mode, selectedId, extraDataFn) {
+  if (!container || !tilesB64?.length) return;
+
+  // ── Compute display size per tile ─────────────────────────────────────
+  // Use the SAME column count as the source sheet (W.columns).
+  // This makes tile positions identical to setup view — no layout confusion.
+  const srcCols = W.columns || 1;
+  const tw = W.tileW || 20;
+  const th = W.tileH || 20;
+
+  // Fit the grid into the container width at integer zoom.
+  // Available width minus padding (8px each side) minus gap (3px per gap).
+  const available = Math.max(100,
+    (container.parentElement?.clientWidth || container.clientWidth || 340) - 16);
+  // Integer zoom that fits all srcCols columns
+  const maxZ = Math.max(1, Math.floor((available - (srcCols-1)*3) / (tw * srcCols)));
+  const z    = Math.min(maxZ, 3); // cap at 3× to avoid over-zoom
+  const cellW = tw * z;
+  const cellH = th * z;
+
+  // CSS grid matching source column count
+  container.style.cssText =
+    `display:grid;` +
+    `grid-template-columns:repeat(${srcCols},${cellW}px);` +
+    `gap:3px;padding:8px;width:fit-content`;
+
+  const f = document.createDocumentFragment();
+  tilesB64.forEach((b64, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'tile-cell';
+    cell.style.cssText = `width:${cellW}px;height:${cellH}px`;
+    cell.dataset.id = i;
+    cell.title = `#${i}  (row ${Math.floor(i/srcCols)}, col ${i%srcCols})`;
+
+    // Image at exact pixel size — no object-fit stretching
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${b64}`;
+    img.width  = cellW;
+    img.height = cellH;
+    img.style.cssText =
+      'display:block;image-rendering:pixelated;width:100%;height:100%';
+    cell.appendChild(img);
+
+    // Bridge hint overlay
+    if (mode === 'bridge' && W.bridgeHints[i]) {
+      const suggested = _suggestBridgeRole(W.bridgeHints[i]);
+      if (suggested) {
+        const ov = document.createElement('div');
+        ov.style.cssText = `position:absolute;inset:0;border-radius:1px;
+          background:${BRIDGE_GROUP_COLORS[suggested]};opacity:.28;pointer-events:none`;
+        cell.appendChild(ov);
+      }
+    }
+
+    // Extra decoration
+    if (extraDataFn) {
+      const extra = extraDataFn(i);
+      if (extra?.badge) {
+        const b = document.createElement('div');
+        b.className = 'badge';
+        b.style.cssText = `background:${extra.badge.bg};color:#000`;
+        b.textContent = extra.badge.text;
+        cell.appendChild(b);
+        cell.style.borderColor = extra.badge.bg;
+      }
+      if (extra?.selected) {
+        cell.classList.add('selected');
+        cell.style.borderColor = 'var(--accent)';
+      }
+    } else if (i === selectedId) {
+      cell.classList.add('selected');
+      cell.style.borderColor = 'var(--accent)';
+    }
+
+    f.appendChild(cell);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(f);
+
+  // Delegated click handler
+  container.onclick = e => {
+    const cell = e.target.closest('.tile-cell');
+    if (!cell) return;
+    const id = parseInt(cell.dataset.id);
+    if (!isNaN(id)) _onTileClick(container, mode, id, tilesB64[id]);
+  };
+}
+
+function _onTileClick(container, mode, localId, b64) {
+  setText('sb-prog', `Tile #${localId} dipilih`);
+
+  if (mode === 'pick') {
+    _applyPick(localId);
+    return;
+  }
+
+  // Unit/items: highlight selected
+  container.querySelectorAll('.tile-cell').forEach(c => {
+    c.classList.remove('selected'); c.style.borderColor = 'transparent';
+  });
+  const cell = container.querySelector(`[data-id="${localId}"]`);
+  if (cell) { cell.classList.add('selected'); cell.style.borderColor = 'var(--accent)'; }
+}
+
+// ── Step 3: Mapping panels ────────────────────────────────
+// Height level colors matching index.html HEIGHT_COLORS + COASTLINE_COLORS
+const HEIGHT_COLORS_WIZ = {
+  '-2':'#04101f', '-1':'#071a3a', '0':'#0e3a6e',
+   '1':'#c8a96e',  '2':'#4a8f3f',  '3':'#6b4226',
+   '4':'#4a5e30',  '5':'#888880',  '6':'#c8ccc8',  '7':'#adf'
+};
+
+function renderHeightRefChips() {
+  const wrap = el('height-ref-chips');
+  if (!wrap) return;
+  // Default: ocean 3 (-3..-1 active), height 7 (1..7 active), level 0 = coastline/shallow
+  const active = new Set([-2,-1,0,1,2,3,4,5,6,7]);
+  wrap.innerHTML = LEVELS.map(({level, label}) => {
+    const col   = HEIGHT_COLORS_WIZ[String(level)] || '#333';
+    const isOn  = active.has(level);
+    const hasTs = W.terrainMapping[level] !== undefined;
+    return `<div style="display:flex;align-items:center;gap:4px;padding:4px 8px;
+      border-radius:20px;border:1px solid ${hasTs ? 'var(--green)' : isOn ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.06)'};
+      background:${hasTs ? 'rgba(63,185,80,.12)' : isOn ? col+'22' : 'transparent'};
+      opacity:${isOn ? 1 : 0.4}">
+      <div style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></div>
+      <span style="font-size:.65rem;font-weight:700;color:${hasTs ? 'var(--green)' : 'var(--text)'}">
+        ${level >= 0 ? '+' : ''}${level}
+      </span>
+      ${hasTs ? '<span style="font-size:.55rem;color:var(--green)">✓</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderMappingPanel() {
+  ['map-terrain','map-bridge','map-unit-items'].forEach(id => show(id, false));
+  if (W.type === 'terrain') {
+    show('map-terrain');
+    renderHeightRefChips();
+    _refreshTerrainVisual();
+  } else if (W.type === 'bridge') {
+    show('map-bridge');
+    setBridgeVariant(W.bridgeVariant || '12');
+    _refreshBridgeVisual();
+  } else {
+    show('map-unit-items');
+    setText('ui-type-label', W.type === 'unit' ? 'Unit' : 'Items');
+    _buildTileGrid(el('ui-picker-grid'), W.tilesB64, 'ui', null);
+  }
+}
+
+// ─── Shared picker state ─────────────────────────────────
+// What is currently being edited: {type:'terrain'|'bridge', level?, slotIdx?, roleKey?}
+let _picking = null;
+
+function closePicker() {
+  _picking = null;
+  // Close bottom sheet
+  const sheet = el('picker-sheet');
+  if (sheet) sheet.classList.remove('open');
+  show('shared-picker-card', false);
+  // Deselect active states
+  W.terrainPickingLevel = null;
+  W.bridgePickingRole   = null;
+  _refreshTerrainVisual();
+  // Only refresh bridge visual for non-simple variants
+  // (simple slots are rendered by _renderSimpleSlots, not _refreshBridgeVisual)
+  if (W.bridgeVariant !== 'simple') _refreshBridgeVisual();
+}
+
+function _openPicker(label, currentLocalId) {
+  setText('shared-picking-for', label);
+  // Open bottom sheet
+  const sheet = el('picker-sheet');
+  if (sheet) sheet.classList.add('open');
+  // Also keep card visible for compat
+  show('shared-picker-card', false); // hide old card, sheet takes over
+  _buildTileGrid(el('shared-picker-grid'), W.tilesB64, 'pick', currentLocalId);
+}
+
+// _onTileClick for 'pick' mode routes here
+function _applyPick(localId) {
+  if (!_picking) return;
+  if (_picking.type === 'terrain') {
+    if (_picking.slotIdx !== undefined) {
+      // Override a specific slot in the 14-tile set
+      if (!W.terrainBlockOverride[_picking.level]) W.terrainBlockOverride[_picking.level] = [];
+      W.terrainBlockOverride[_picking.level][_picking.slotIdx] = localId;
+    } else {
+      // Set center tile (main assignment)
+      W.terrainMapping[_picking.level] = localId;
+    }
+    const lvl = _picking.level;
+    _picking = null;
+    W.terrainPickingLevel = null;
+    show('shared-picker-card', false);
+    _refreshTerrainVisual();
+    // Scroll the updated level card into view
+    const updated = document.querySelector(`[data-level="${lvl}"]`);
+    if (updated) updated.scrollIntoView({behavior:'smooth', block:'nearest'});
+  } else if (_picking.type === 'simple') {
+    _applySimplePick(localId);
+    return;
+  } else if (_picking.type === 'bridge') {
+    W.bridgeMapping[_picking.roleKey] = localId;
+    // Auto-advance to next unassigned required role
+    const next =
+      BRIDGE_ROLES.find(r => r.required && !(r.key in W.bridgeMapping) && r.key !== _picking.roleKey) ||
+      BRIDGE_ROLES.find(r => !(r.key in W.bridgeMapping) && r.key !== _picking.roleKey);
+    _picking = null;
+    closePicker();
+    _refreshBridgeVisual();
+    updateSidebarMappingStatus();
+    if (next) {
+      // Auto-open picker for next role
+      setTimeout(() => {
+        _picking = {type:'bridge', roleKey: next.key};
+        W.bridgePickingRole = next.key;
+        _openPicker(`→ Assign "${next.label}"`, W.bridgeMapping[next.key]);
+        _refreshBridgeVisual();
+      }, 120);
+    }
+  }
+}
+
+// ── Tile selection system ─────────────────────────────────
+const _sel = {
+  active: false,       // selection mode on/off
+  tiles: new Set(),    // selected localIds
+  dragging: false,     // drag in progress
+  addMode: true,       // true=add, false=remove
+};
+
+function toggleSelMode() {
+  _sel.active = !_sel.active;
+  if (!_sel.active) selClear();
+  const btn = el('btn-sel-mode');
+  if (btn) {
+    btn.style.borderColor = _sel.active ? 'var(--accent)' : 'var(--border)';
+    btn.style.color       = _sel.active ? 'var(--accent)' : 'var(--muted)';
+    btn.style.background  = _sel.active ? 'rgba(56,189,248,.1)' : 'transparent';
+    btn.textContent       = _sel.active ? '◼ Pilih' : '◻ Pilih';
+  }
+  const hitEl = el('sheet-img-display') || el('sheet-canvas');
+  if (hitEl) hitEl.style.cursor = _sel.active ? 'cell' : 'crosshair';
+  _drawSheetCanvas();
+}
+
+function selClear() {
+  _sel.tiles.clear();
+  _sel.active = false;
+  const btn = el('btn-sel-mode');
+  if (btn) { btn.style.borderColor='var(--border)'; btn.style.color='var(--muted)';
+             btn.style.background='transparent'; btn.textContent='◻ Pilih'; }
+  const hitEl2 = el('sheet-img-display') || el('sheet-canvas');
+  if (hitEl2) hitEl2.style.cursor = 'crosshair';
+  show('sel-toolbar', false);
+  _drawSheetCanvas();
+}
+
+function _selToggleTile(id, add) {
+  if (add) _sel.tiles.add(id); else _sel.tiles.delete(id);
+  _updateSelUI();
+  _drawSheetCanvas();
+}
+
+function _updateSelUI() {
+  const n = _sel.tiles.size;
+  show('sel-toolbar', n > 0);
+  setText('sel-count', n);
+
+  // Preview strip — sorted by reading order (row-major)
+  const prev = el('sel-preview'); if (!prev) return;
+  prev.innerHTML = '';
+  const ids = _sortedSelIds();
+  const sz  = Math.max(W.tileW, 12) * 2;
+  ids.forEach((id, idx) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `position:relative;width:${sz}px;height:${sz}px;
+      border:2px solid var(--accent);border-radius:4px;overflow:hidden;flex-shrink:0`;
+
+    if (W.tilesB64[id]) {
+      const img = document.createElement('img');
+      img.src = `data:image/png;base64,${W.tilesB64[id]}`;
+      img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;display:block';
+      wrap.appendChild(img);
+    } else {
+      wrap.style.background = 'var(--surf2)';
+    }
+
+    // Order number badge
+    const badge = document.createElement('div');
+    badge.style.cssText = `position:absolute;top:0;left:0;background:var(--accent);
+      color:#000;font-size:6px;font-weight:700;padding:1px 3px;line-height:1.2`;
+    badge.textContent = idx + 1;
+    wrap.appendChild(badge);
+
+    prev.appendChild(wrap);
+  });
+}
+
+function _sortedSelIds() {
+  // Sort selected tiles in reading order (top→bottom, left→right)
+  const cols = W.columns;
+  return [..._sel.tiles].sort((a, b) => {
+    const ra = Math.floor(a / cols), ca = a % cols;
+    const rb = Math.floor(b / cols), cb = b % cols;
+    return ra !== rb ? ra - rb : ca - cb;
+  });
+}
+
+// ── "Gunakan Seleksi" → route to right mapping ────────────────────────────
+function selConfirm() {
+  const ids = _sortedSelIds();
+  if (!ids.length) return;
+
+  // Compute bounding box
+  const cols  = W.columns;
+  const rows_ = ids.map(id => Math.floor(id / cols));
+  const cols_ = ids.map(id => id % cols);
+  const minR  = Math.min(...rows_), maxR = Math.max(...rows_);
+  const minC  = Math.min(...cols_), maxC = Math.max(...cols_);
+  const gCols = maxC - minC + 1;
+  const gRows = maxR - minR + 1;
+
+  if (W.type === 'bridge') {
+    _selToBridgeLayout(ids, minR, minC, gRows, gCols);
+  } else if (W.type === 'terrain') {
+    _selToTerrainLevel(ids);
+  } else {
+    toast(`${ids.length} tile dipilih (IDs: ${ids.slice(0,5).join(', ')}${ids.length>5?'…':''})`);
+  }
+  selClear();
+  // Advance to step 3 mapping
+  if (W.step < 3) goStep(3);
+}
+
+// ── Bridge: map selection to custom layout grid ───────────────────────────
+function _selToBridgeLayout(ids, minR, minC, gRows, gCols) {
+  const cols = W.columns;
+
+  // Switch to custom variant
+  W.bridgeVariant = 'custom';
+  _custom.rows = gRows;
+  _custom.cols = gCols;
+  el('custom-rows-val') && (el('custom-rows-val').textContent = gRows);
+  el('custom-cols-val') && (el('custom-cols-val').textContent = gCols);
+
+  // Build grid from bounding box (null = empty/no tile selected)
+  _custom.grid = Array.from({length: gRows}, (_, r) =>
+    Array.from({length: gCols}, (_, c) => {
+      const localId = (minR + r) * cols + (minC + c);
+      return _sel.tiles.has(localId) ? null : null; // role TBD
+    })
+  );
+
+  // Auto-assign roles based on position within bounding box
+  const idsSet = new Set(ids);
+  const dir = gCols >= gRows ? 'H' : 'V'; // infer direction from shape
+  setSimpleDir(dir);  // use simple layout direction
+
+  ids.forEach(id => {
+    const r   = Math.floor(id / cols) - minR;
+    const c   = id % cols - minC;
+    const role = _guessRole(r, c, gRows, gCols, dir);
+    _custom.grid[r][c] = role;
+    // Auto-assign tile
+    if (role) W.bridgeMapping[role] = id;
+  });
+
+  setBridgeVariant('custom');
+  toast(`✅ ${ids.length} tile → layout ${gRows}×${gCols} (${dir === 'H' ? '↔ H' : '↕ V'})`);
+}
+
+function _guessRole(r, c, rows, cols, dir) {
+  if (dir === 'H') {
+    const isLeft  = c === 0;
+    const isRight = c === cols - 1;
+    const isTop   = r === 0;
+    const isBot   = r === rows - 1;
+    if (rows === 1)  return isLeft ? 'W_top' : isRight ? 'E_top' : 'H_top';
+    if (isTop) return isLeft ? 'W_top' : isRight ? 'E_top' : 'H_top';
+    if (isBot) return isLeft ? 'W_bot' : isRight ? 'E_bot' : 'H_bot';
+    // 3+ rows: top=corner, mid=span, bot=corner
+    if (r < rows / 2) return isLeft ? 'NW' : isRight ? 'NE' : 'N';
+    return isLeft ? 'SW' : isRight ? 'SE' : 'S';
+  } else { // V
+    const isTop   = r === 0;
+    const isBot   = r === rows - 1;
+    const isLeft  = c === 0;
+    const isRight = c === cols - 1;
+    if (cols === 1)  return isTop ? 'W_top' : isBot ? 'E_top' : 'H_top';
+    if (isLeft) return isTop ? 'W_top' : isBot ? 'E_top' : 'H_top';
+    if (isRight) return isTop ? 'W_bot' : isBot ? 'E_bot' : 'H_bot';
+    return isTop ? 'NW' : isBot ? 'SW' : 'W';
+  }
+}
+
+// ── Terrain: assign selected tiles as a level's full tile_set ─────────────
+function _selToTerrainLevel(ids) {
+  if (!ids.length) return;
+  // First tile = center tile for currently active terrain level
+  const lvl = W.terrainPickingLevel ?? 2; // default to grass
+  W.terrainMapping[lvl] = ids[0];
+  // If 9+ tiles selected, try auto-fill tileset14 slots
+  if (ids.length >= 9) {
+    const slots14 = [0,1,2,3,4,5,6,7,8,9,10,11,12,13];
+    if (!W.terrainBlockOverride[lvl]) W.terrainBlockOverride[lvl] = [];
+    ids.slice(0, 14).forEach((id, i) => {
+      W.terrainBlockOverride[lvl][i] = id;
+    });
+  }
+  toast(`✅ Level ${lvl}: center tile #${ids[0]}${ids.length>=9?' + '+Math.min(ids.length,14)+' tile block':''}`);
+}
+
+// ── Extend canvas click/drag for selection mode ────────────────────────────
+function _selHandlePointer(e, hitEl, isDown) {
+  if (!_sel.active) return false;
+  e.preventDefault();
+  const rect = hitEl.getBoundingClientRect();
+  const px   = (e.touches ? e.touches[0] : e).clientX - rect.left;
+  const py   = (e.touches ? e.touches[0] : e).clientY - rect.top;
+  const z  = _getCanvasZ(), tw = W.tileW, th = W.tileH, cols = W.columns;
+  const col = Math.floor(px / (tw * z));
+  const row = Math.floor(py / (th * z));
+  const id  = row * cols + col;
+  if (id < 0 || id >= W.tilecount) return true;
+  if (isDown) _sel.addMode = !_sel.tiles.has(id);
+  _selToggleTile(id, _sel.addMode);
+  return true;
+}
+const LEVELS = [
+  {level:-2, label:'Deep Ocean',  emoji:'🌊', color:'#1a3a5c'},
+  {level:-1, label:'Deep Water',  emoji:'💧', color:'#1e4a7c'},
+  {level: 0, label:'Water',       emoji:'🌊', color:'#2563a8'},
+  {level: 1, label:'Sand/Beach',  emoji:'🏖️', color:'#c9a84c'},
+  {level: 2, label:'Grass',       emoji:'🌿', color:'#3d7a28'},
+  {level: 3, label:'Soil',        emoji:'🟫', color:'#7c5230'},
+  {level: 4, label:'Swamp',       emoji:'🌾', color:'#4a5e30'},
+  {level: 5, label:'Stone/Cliff', emoji:'🪨', color:'#6b6b6b'},
+  {level: 6, label:'Snow',        emoji:'❄️', color:'#b0c8d8'},
+  {level: 7, label:'Ice',         emoji:'🧊', color:'#a0c4e8'},
+];
+
+// User-editable label overrides: { level → {label, emoji} }
+const LEVEL_OVERRIDES = {};
+
+function getLevelLabel(level) {
+  const ov = LEVEL_OVERRIDES[level];
+  const def = LEVELS.find(l => l.level === level) || {label:`Level ${level}`, emoji:'🔲'};
+  return {label: ov?.label ?? def.label, emoji: ov?.emoji ?? def.emoji};
+}
+
+function editLevelLabel(level, currentLabel, currentEmoji) {
+  const key = `level-label-edit-${level}`;
+  if (document.getElementById(key)) return; // already open
+
+  const card = document.querySelector(`[data-level="${level}"]`);
+  if (!card) return;
+
+  const hdr = card.querySelector('[data-lhdr]');
+  if (!hdr) return;
+
+  hdr.style.display = 'none';
+
+  const form = document.createElement('div');
+  form.id = key;
+  form.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap';
+  form.innerHTML = `
+    <input id="${key}-emoji" value="${currentEmoji}" maxlength="4"
+      style="width:46px;background:#0b1221;border:1px solid var(--accent);border-radius:6px;
+             color:var(--text);padding:5px;font-size:1rem;text-align:center">
+    <input id="${key}-label" value="${currentLabel}"
+      style="flex:1;min-width:80px;background:#0b1221;border:1px solid var(--accent);border-radius:6px;
+             color:var(--text);padding:5px 8px;font-size:.8rem">
+    <button class="btn btn-sm" style="border-color:var(--green);color:var(--green)"
+      onclick="saveLevelLabel(${level},'${key}')">✓</button>
+    <button class="btn btn-sm"
+      onclick="cancelLevelLabel(${level},'${key}')">✕</button>`;
+  card.insertBefore(form, card.firstChild);
+
+  setTimeout(() => document.getElementById(`${key}-label`)?.select(), 50);
+}
+
+function saveLevelLabel(level, key) {
+  const emoji = document.getElementById(`${key}-emoji`)?.value.trim() || '';
+  const label = document.getElementById(`${key}-label`)?.value.trim() || '';
+  if (label) LEVEL_OVERRIDES[level] = {label, emoji: emoji || '🔲'};
+  _cancelLabelForm(level, key);
+  _refreshTerrainVisual();
+}
+
+function cancelLevelLabel(level, key) {
+  _cancelLabelForm(level, key);
+}
+
+function _cancelLabelForm(level, key) {
+  document.getElementById(key)?.remove();
+  const card = document.querySelector(`[data-level="${level}"]`);
+  const hdr = card?.querySelector('[data-lhdr]');
+  if (hdr) hdr.style.display = '';
+}
+
+// Slot index → block position (3×3 reading order)
+// tile_set: 0=flat_below,1=center,2=NW,3=N,4=NE,5=W,6=E,7=SW,8=S,9=SE,10=iTL,11=iTR,12=iBL,13=iBR
+// Block positions: [NW,N,NE, W,C,E, SW,S,SE] = slot indices [2,3,4, 5,1,6, 7,8,9]
+const BLOCK_SLOT_MAP  = [2,3,4, 5,1,6, 7,8,9];
+const SLOT_NAMES      = ['flat_below','center','NW','N','NE','W','E','SW','S','SE','iTL','iTR','iBL','iBR'];
+
+function _buildTileSetFor(level) {
+  const center = W.terrainMapping[level];
+  if (center === undefined) return null;
+  const r = Math.floor(center / W.columns), c = center % W.columns;
+  const t = (dr, dc) => { const l=(r+dr)*W.columns+(c+dc); return l>=0&&l<W.tilecount?l:center; };
+  const auto14 = [t(2,1),center,t(-1,-1),t(-1,0),t(-1,1),t(0,-1),t(0,1),t(1,-1),t(1,0),t(1,1),t(2,-1),t(2,0),t(3,-1),t(3,0)];
+  const overrides = W.terrainBlockOverride[level] || [];
+  return auto14.map((v,i) => overrides[i]!==undefined ? overrides[i] : v);
+}
+
+function _refreshTerrainVisual() {
+  renderHeightRefChips();
+  const grid = el('terrain-visual-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const sz = Math.max(W.tileW, 14) * 2;
+
+  grid.appendChild(frag(LEVELS, ({level, color}) => {
+    const {label, emoji} = getLevelLabel(level);
+    const isActive   = W.terrainPickingLevel === level;
+    const tileset14  = _buildTileSetFor(level);
+    const hasCenter  = W.terrainMapping[level] !== undefined;
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.level = level;
+    card.style.cssText = `padding:10px 12px;margin-bottom:8px;border-color:${isActive ? 'var(--accent)' : hasCenter ? 'rgba(63,185,80,.3)' : 'var(--border)'}`;
+
+    // Row header
+    const hdr = document.createElement('div');
+    hdr.setAttribute('data-lhdr','1');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:8px';
+    const emojiSafe = emoji.replace(/'/g,"\'");
+    const labelSafe = label.replace(/'/g,"\'");
+    hdr.innerHTML = `
+      <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <span style="font-size:.8rem;font-weight:700">${emoji} ${label}</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--text);margin-left:5px;
+          background:${HEIGHT_COLORS_WIZ[String(level)]||'#333'}33;
+          border:1px solid ${HEIGHT_COLORS_WIZ[String(level)]||'#555'}55;
+          border-radius:5px;padding:1px 6px">${level >= 0 ? '+' : ''}${level}</span>
+      </div>
+      <button onclick="editLevelLabel(${level},'${labelSafe}','${emojiSafe}')"
+        style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.7rem;padding:3px 5px;border-radius:4px;flex-shrink:0" title="Rename level">✏️</button>
+      ${hasCenter
+        ? `<span style="font-size:.65rem;color:var(--green);flex-shrink:0">✓ #${W.terrainMapping[level]}</span>`
+        : `<span style="font-size:.65rem;color:var(--muted);flex-shrink:0">—</span>`}`;
+    card.appendChild(hdr);
+
+    // 3×3 visual block
+    const blockWrap = document.createElement('div');
+    blockWrap.style.cssText = 'display:flex;align-items:flex-start;gap:10px';
+
+    const block = document.createElement('div');
+    block.style.cssText = `display:grid;grid-template-columns:repeat(3,${sz}px);gap:2px;flex-shrink:0`;
+
+    if (tileset14 && W.tilesB64.length) {
+      BLOCK_SLOT_MAP.forEach((slotIdx, pos) => {
+        const lid  = tileset14[slotIdx];
+        const cell = document.createElement('div');
+        const isCenter  = pos === 4;
+        const isOverride= (W.terrainBlockOverride[level]||[])[slotIdx] !== undefined;
+        cell.style.cssText = `position:relative;width:${sz}px;height:${sz}px;cursor:pointer;
+          border-radius:3px;overflow:hidden;
+          outline:${isCenter ? '2px solid var(--accent)' : isActive&&pos===4 ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,.08)'}`;
+        cell.title = `${SLOT_NAMES[slotIdx]} → Tile #${lid}`;
+
+        const img = document.createElement('img');
+        img.src = W.tilesB64[lid] ? `data:image/png;base64,${W.tilesB64[lid]}` : '';
+        img.style.cssText = `display:block;width:${sz}px;height:${sz}px;image-rendering:pixelated`;
+        cell.appendChild(img);
+
+        // Override dot
+        if (isOverride) {
+          const dot = document.createElement('div');
+          dot.style.cssText = 'position:absolute;top:1px;right:1px;width:5px;height:5px;border-radius:50%;background:var(--green)';
+          cell.appendChild(dot);
+        }
+
+        // Slot label (tiny)
+        const lbl = document.createElement('div');
+        lbl.style.cssText = 'position:absolute;bottom:0;left:0;right:0;font-size:5px;text-align:center;background:rgba(0,0,0,.55);color:#fff;line-height:1.4;pointer-events:none';
+        lbl.textContent = isCenter ? 'C' : SLOT_NAMES[slotIdx];
+        cell.appendChild(lbl);
+
+        cell.onclick = () => {
+          _picking = {type:'terrain', level, slotIdx};
+          W.terrainPickingLevel = level;
+          _openPicker(`→ ${emoji} ${label} · slot ${SLOT_NAMES[slotIdx]}`, lid);
+          _refreshTerrainVisual();
+        };
+        block.appendChild(cell);
+      });
+    } else {
+      // No tiles yet — show "assign center" button
+      const ph = document.createElement('div');
+      ph.style.cssText = `grid-column:span 3;height:${sz}px;display:flex;align-items:center;
+        justify-content:center;border:1px dashed var(--border);border-radius:4px;cursor:pointer;
+        font-size:.75rem;color:var(--muted)`;
+      ph.textContent = hasCenter ? `#${W.terrainMapping[level]} (tiles loading…)` : 'Tap untuk assign';
+      ph.onclick = () => {
+        _picking = {type:'terrain', level, slotIdx:undefined}; // undefined = center
+        W.terrainPickingLevel = level;
+        _openPicker(`→ ${emoji} ${label} · pilih tile tengah`, W.terrainMapping[level]);
+        _refreshTerrainVisual();
+      };
+      block.appendChild(ph);
+    }
+    blockWrap.appendChild(block);
+
+    // Legend (right side)
+    if (tileset14 && W.tilesB64.length) {
+      const legend = document.createElement('div');
+      legend.style.cssText = 'font-size:.6rem;color:var(--muted);line-height:1.9;flex-shrink:0';
+      legend.innerHTML = 'NW N NE<br>W <span class="txt-accent">C</span> E<br>SW S SE<br><span style="color:var(--green);font-size:.55rem">●=manual</span>';
+      blockWrap.appendChild(legend);
+    }
+
+    card.appendChild(blockWrap);
+    return card;
+  }));
+
+  // Update status
+  const assigned = Object.keys(W.terrainMapping).length;
+  setText('terrain-map-status', `${assigned}/${LEVELS.length} level`);
+  updateSidebarMappingStatus();
+}
+
+async function autoSuggestTerrain() {
+  const btn = el('btn-autosuggest');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const res = await fetch(`${API}/registry/suggest-terrain`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({png:W.pngB64, tilecount:W.tilecount,
+                            columns:W.columns, tilewidth:W.tileW, tileheight:W.tileH})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    let applied = 0;
+    data.level_suggestions.forEach(s => {
+      if (s.candidate_ids.length && s.confidence > 0.2) { W.terrainMapping[s.level] = s.candidate_ids[0]; applied++; }
+    });
+    _refreshTerrainVisual();
+    toast(`✨ ${applied} level terdeteksi`);
+  } catch(e) { toast(e.message, true); }
+  finally { if(btn) { btn.disabled = false; btn.textContent = '✨ Auto-detect'; } }
+}
+
+function clearTerrainMapping() {
+  W.terrainMapping = {}; W.terrainBlockOverride = {};
+  W.terrainPickingLevel = null;
+  closePicker();
+  _refreshTerrainVisual();
+}
+
+// ─── AutoLight reference ──────────────────────────────────
+let _autoLightRefLoaded = false;
+async function toggleRef() {
+  const card = el('autolight-ref-card');
+  if (!card) return;
+  const open = card.style.display === '';
+  card.style.display = open ? 'none' : '';
+  if (!open && !_autoLightRefLoaded) await loadAutoLightRef();
+}
+
+async function loadAutoLightRef() {
+  const grid = el('autolight-ref-grid');
+  if (!grid) return;
+  try {
+    const [refRes, tsRes] = await Promise.all([
+      fetch(`${API}/registry/preview-terrain-example`),
+      fetch(`${API}/tilesets/1`),
+    ]);
+    const refData = await refRes.json();
+    const tsData  = await tsRes.json();
+    const groundPng = tsData?.ground?.png;
+    if (!groundPng || refData.error) { grid.innerHTML = '<span style="font-size:.75rem;color:var(--muted)">Muat blueprint dulu di Map Generator</span>'; return; }
+
+    const tilesRes = await fetch(`${API}/registry/tiles`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({png:groundPng, tilecount:200, columns:27, tilewidth:20, tileheight:20})
+    });
+    const tData = await tilesRes.json();
+    if (tData.error) throw new Error(tData.error);
+    const alTiles = tData.tiles;
+    const COLS_AL = 27;
+
+    grid.innerHTML = '';
+    grid.appendChild(frag(refData.centers, ({level, local_id, label, color}) => {
+      const r = Math.floor(local_id/COLS_AL), c = local_id%COLS_AL;
+      const blockIds = [
+        (r-1)*COLS_AL+(c-1),(r-1)*COLS_AL+c,(r-1)*COLS_AL+(c+1),
+        r*COLS_AL+(c-1), local_id, r*COLS_AL+(c+1),
+        (r+1)*COLS_AL+(c-1),(r+1)*COLS_AL+c,(r+1)*COLS_AL+(c+1),
+      ];
+      const wrap = document.createElement('div');
+      wrap.className = 'ref-level';
+      const dot = document.createElement('div');
+      dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0`;
+      const blk = document.createElement('div');
+      blk.className = 'ref-block';
+      blockIds.forEach(bid => {
+        const img = document.createElement('img');
+        img.src = bid>=0&&bid<alTiles.length ? `data:image/png;base64,${alTiles[bid]}` : '';
+        img.width = img.height = 20;
+        blk.appendChild(img);
+      });
+      const info = document.createElement('div');
+      info.innerHTML = `<div style="font-weight:700">${label}</div><div class="txt-muted">#${local_id}</div>`;
+      [dot,blk,info].forEach(n=>wrap.appendChild(n));
+      return wrap;
+    }));
+    _autoLightRefLoaded = true;
+  } catch(e) { if(grid) grid.innerHTML = `<span style="color:var(--red);font-size:.75rem">${e.message}</span>`; }
+}
+
+// ─── Bridge visual grid ───────────────────────────────────
+const BRIDGE_ROLES = [
+  {key:'NW',    label:'↖ NW',       group:'corner',  desc:'Corner kiri atas',      required:false},
+  {key:'NE',    label:'↗ NE',       group:'corner',  desc:'Corner kanan atas',     required:false},
+  {key:'SW',    label:'↙ SW',       group:'corner',  desc:'Corner kiri bawah',     required:false},
+  {key:'SE',    label:'↘ SE',       group:'corner',  desc:'Corner kanan bawah',    required:false},
+  {key:'H_top', label:'━ Span Top', group:'span_h',  desc:'Span horizontal atas',  required:true},
+  {key:'H_bot', label:'━ Span Bot', group:'span_h',  desc:'Span horizontal bawah', required:true},
+  {key:'W_top', label:'▌ W top',    group:'side',    desc:'Sisi kiri atas',        required:false},
+  {key:'E_top', label:'▐ E top',    group:'side',    desc:'Sisi kanan atas',       required:false},
+  {key:'W_bot', label:'▌ W bot',    group:'side',    desc:'Sisi kiri bawah',       required:false},
+  {key:'E_bot', label:'▐ E bot',    group:'side',    desc:'Sisi kanan bawah',      required:false},
+  {key:'N',     label:'↑ N',        group:'border',  desc:'Border atas',           required:false},
+  {key:'S',     label:'↓ S',        group:'border',  desc:'Border bawah',          required:false},
+  // Extra roles for terrain-like bridge tilesets
+  {key:'V_left', label:'▌ Span V L', group:'span_v', desc:'Span vertikal kiri',   required:false},
+  {key:'V_right',label:'▐ Span V R', group:'span_v', desc:'Span vertikal kanan',  required:false},
+  {key:'V_top',  label:'▲ V cap top',group:'span_v', desc:'Ujung atas vertikal',  required:false},
+  {key:'V_bot',  label:'▼ V cap bot',group:'span_v', desc:'Ujung bawah vertikal', required:false},
+  {key:'W',      label:'◀ W',        group:'border',  desc:'Border kiri',          required:false},
+  {key:'E',      label:'▶ E',        group:'border',  desc:'Border kanan',         required:false},
+  {key:'center', label:'⊕ Center',   group:'center',  desc:'Tile persimpangan',    required:false},
+];
+
+const BRIDGE_GROUP_COLORS = {
+  corner:'#e67e22', span_h:'#3498db', span_v:'#9b59b6',
+  side:'#27ae60', border:'#1abc9c', center:'#f39c12',
+};
+
+function _suggestBridgeRole(hints) {
+  if (!hints) return null;
+  if (hints.span_H  > 0.15) return 'span_h';
+  if (hints.span_V  > 0.15) return 'span_v';
+  if (hints.corner  > 0.12) return 'corner';
+  if (hints.border_N > 0.1 || hints.border_S > 0.1) return 'border';
+  return null;
+}
+
+// ── Simple 3-category bridge layout ──────────────────────────────────────────
+// tiles key: "cat:row_offset:col_offset"
+// e.g. "cap_start:0:0", "cap_start:0:1", "span:0:0", "cap_end:0:0"
+
+const SIMPLE_CATS = [
+  { id: 'cap_start', label: '◀ Endcap Kiri',   desc: 'Ujung kiri / atas',       color: '#ff9800' },
+  { id: 'span',      label: '━ Span / Middle',  desc: 'Tengah bridge (berulang)', color: '#00d9c8' },
+  { id: 'cap_end',   label: '▶ Endcap Kanan',  desc: 'Ujung kanan / bawah',      color: '#ff9800' },
+];
+
+const _simple = {
+  dir:      'H',
+  n_rows:   2,
+  cap_cols: 1,
+  span_cols: 1,   // repeating unit width for span
+  mirror:   true,
+  tiles:    {},   // { 'cat:row:col': localId }
+};
+
+function _simpleKey(cat, row, col) { return `${cat}:${row}:${col}`; }
+
+function setSimpleDir(dir) {
+  _simple.dir = dir;
+  ['H','V'].forEach(d => {
+    const btn = el(`sl-dir-${d}`);
+    if (btn) btn.classList.toggle('on', d === dir);
+  });
+}
+
+function adjSimpleRows(delta) {
+  _simple.n_rows = Math.max(1, Math.min(6, _simple.n_rows + delta));
+  setText('sl-rows-val', _simple.n_rows);
+  _renderSimpleSlots();
+}
+
+function adjSimpleCap(delta) {
+  _simple.cap_cols = Math.max(1, Math.min(5, _simple.cap_cols + delta));
+  setText('sl-cap-val', _simple.cap_cols);
+  _renderSimpleSlots();
+}
+
+function adjSimpleSpan(delta) {
+  _simple.span_cols = Math.max(1, Math.min(5, _simple.span_cols + delta));
+  setText('sl-span-val', _simple.span_cols);
+  _renderSimpleSlots();
+}
+
+function _renderSimpleSlots() {
+  const container = el('simple-slots');
+  if (!container) return;
+  container.innerHTML = '';
+
+  SIMPLE_CATS.forEach(cat => {
+    // Skip CAP_END when mirror is on (no slots needed)
+    const isEnd    = cat.id === 'cap_end';
+    const isMirror = isEnd && _simple.mirror;
+
+    // Category header
+    const hdr = document.createElement('div');
+    hdr.style.cssText = `font-size:.72rem;font-weight:700;color:${cat.color};
+      font-family:'IBM Plex Mono',monospace;margin:10px 0 5px;
+      display:flex;align-items:center;gap:6px`;
+    hdr.innerHTML = `<span>${cat.label}</span>
+      <span style="font-weight:400;color:var(--dim);font-size:.62rem">${
+        isMirror ? '(auto-mirror dari Endcap Kiri)' : cat.desc
+      }</span>`;
+    container.appendChild(hdr);
+
+    if (isMirror) {
+      // Show preview of mirrored tiles
+      const preview = document.createElement('div');
+      preview.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px;opacity:.6';
+      const rows = _simple.n_rows;
+      const cols = cat.id === 'span' ? _simple.span_cols : _simple.cap_cols;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const srcKey = _simpleKey('cap_start', r, c);
+          const lid    = _simple.tiles[srcKey];
+          const sz = 40;
+          const slot = document.createElement('div');
+          slot.style.cssText = `width:${sz}px;height:${sz}px;border-radius:6px;
+            border:1px dashed ${cat.color}55;
+            background:var(--ink);position:relative;overflow:hidden;
+            display:flex;align-items:center;justify-content:center;flex-shrink:0`;
+          if (lid !== undefined && W.tilesB64[lid]) {
+            const img = document.createElement('img');
+            img.src = `data:image/png;base64,${W.tilesB64[lid]}`;
+            img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;transform:scaleX(-1)';
+            slot.appendChild(img);
+          }
+          const lbl = document.createElement('div');
+          lbl.style.cssText = 'position:absolute;bottom:0;left:0;right:0;font-size:5px;text-align:center;background:rgba(0,0,0,.7);color:#aaa;pointer-events:none;font-family:monospace';
+          lbl.textContent = `flip`;
+          slot.appendChild(lbl);
+          preview.appendChild(slot);
+        }
+      }
+      container.appendChild(preview);
+      return;
+    }
+
+    // Slot grid: rows × cols (1 col for span, cap_cols for endcaps)
+    const rows = _simple.n_rows;
+    const cols = cat.id === 'span' ? _simple.span_cols : _simple.cap_cols;
+
+    for (let r = 0; r < rows; r++) {
+      const rowWrap = document.createElement('div');
+      rowWrap.style.cssText = 'display:flex;gap:5px;margin-bottom:4px;align-items:center';
+
+      // Row label
+      if (rows > 1) {
+        const rl = document.createElement('span');
+        rl.style.cssText = 'font-size:.6rem;color:var(--dim);font-family:monospace;width:18px;flex-shrink:0';
+        rl.textContent = `r${r}`;
+        rowWrap.appendChild(rl);
+      }
+
+      for (let c = 0; c < cols; c++) {
+        const key = _simpleKey(cat.id, r, c);
+        const lid = _simple.tiles[key];
+        const sz  = 52;
+
+        const slot = document.createElement('div');
+        slot.style.cssText = `width:${sz}px;height:${sz}px;border-radius:8px;
+          border:2px solid ${lid !== undefined ? cat.color : 'var(--line)'};
+          background:${lid !== undefined ? cat.color+'18' : 'var(--ink)'};
+          position:relative;cursor:pointer;overflow:hidden;
+          display:flex;align-items:center;justify-content:center;
+          touch-action:manipulation;flex-shrink:0`;
+
+        if (lid !== undefined && W.tilesB64[lid]) {
+          const img = document.createElement('img');
+          img.src = `data:image/png;base64,${W.tilesB64[lid]}`;
+          img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;object-fit:contain';
+          slot.appendChild(img);
+        }
+
+        const lbl = document.createElement('div');
+        lbl.style.cssText = `position:absolute;bottom:0;left:0;right:0;
+          font-size:5.5px;text-align:center;background:rgba(0,0,0,.75);color:#fff;
+          padding:1px 0;pointer-events:none;font-family:'IBM Plex Mono',monospace`;
+        lbl.textContent = `${cols>1?'c'+c+' ':''}${lid !== undefined ? '#'+lid : '—'}`;
+        slot.appendChild(lbl);
+
+        slot.oncontextmenu = e => {
+          e.preventDefault();
+          delete _simple.tiles[key];
+          _renderSimpleSlots(); _updateSimpleStatus();
+        };
+        slot.onclick = () => {
+          console.debug('[slotClick] cat:', cat.id, 'r:', r, 'c:', c, 'key:', key);
+          _picking = { type: 'simple', key };
+          _openPicker(`${cat.label}${rows>1?' r'+r:''}${cols>1?' c'+c:''}`, lid);
+        };
+
+        rowWrap.appendChild(slot);
+      }
+      container.appendChild(rowWrap);
+    }
+  });
+}
+
+function _applySimplePick(localId) {
+  const key = _picking.key;
+  console.debug('[simplePick] key:', key, '← tile', localId);
+  _simple.tiles[key] = localId;
+  _picking = null;
+  closePicker();
+  _renderSimpleSlots();
+  _updateSimpleStatus();
+}
+
+function _updateSimpleStatus() {
+  const rows = _simple.n_rows;
+  const cap  = _simple.cap_cols;
+  const total = rows * cap * 2 + rows;  // cap_start + span + cap_end (or mirrored)
+  const withTile = Object.keys(_simple.tiles).length;
+  const hasSpan  = Object.keys(_simple.tiles).some(k => k.startsWith('span:'));
+  setText('bridge-map-count',
+    `${withTile} tile · cap ${_simple.cap_cols}c×${_simple.n_rows}r · span ${_simple.span_cols}c×${_simple.n_rows}r${_simple.mirror?' +mirror':''} ${hasSpan?'✓':'(span wajib)'}`);
+  updateSidebarMappingStatus();
+}
+
+function _simpleIsReady() {
+  return Object.keys(_simple.tiles).some(k => k.startsWith('span:'));
+}
+
+function _simpleToBridgeData() {
+  const tiles = [];
+  for (const [key, localId] of Object.entries(_simple.tiles)) {
+    const [cat, row, col] = key.split(':');
+    tiles.push({
+      category:   cat,
+      row_offset: parseInt(row),
+      col_offset: parseInt(col),
+      local_id:   localId,
+      rotate:     false,
+      flip:       false,
+    });
+  }
+  return {
+    direction:  _simple.dir,
+    n_rows:     _simple.n_rows,
+    cap_cols:   _simple.cap_cols,
+    span_cols:  _simple.span_cols,
+    mirror_cap: _simple.mirror,
+    tiles,
+  };
+}
+
+function setBridgeVariant(v) {
+  W.bridgeVariant = v;
+
+  // Update button active state
+  ['simple','6','12','custom'].forEach(k => {
+    const btn = el(`bv-${k}`);
+    if (!btn) return;
+    btn.classList.toggle('on', k === v);
+  });
+
+  // Show/hide builders
+  const simpleBuilder = el('simple-layout-builder');
+  const customBuilder = el('custom-layout-builder');
+  if (simpleBuilder) simpleBuilder.style.display = v === 'simple'  ? '' : 'none';
+  if (customBuilder) customBuilder.style.display = v === 'custom'  ? '' : 'none';
+
+  // Descriptions
+  const desc = el('variant-desc');
+  if (desc) {
+    const DESCS = {
+      'simple': 'Simple: 3 kategori — Endcap Kiri · Span (berulang) · Endcap Kanan\nCocok untuk hampir semua bridge. Mudah setup.',
+      '12':    '12-tile: preset dengan corner NW/NE/SW/SE + border N/S.\nSetup manual per-role.',
+      '6':     '6-tile: span + endcap tanpa dekorasi.',
+      'custom':'Custom (legacy): posisi bebas + adjacency rules.',
+    };
+    desc.textContent = DESCS[v] || '';
+    desc.style.display = DESCS[v] ? '' : 'none';
+  }
+
+  if (v === 'simple') {
+    _renderSimpleSlots();
+    _updateSimpleStatus();
+  }
+  if (v === '6') {
+    const allowed = new Set(['H_top','H_bot','W_top','E_top','W_bot','E_bot']);
+    Object.keys(W.bridgeMapping).forEach(k => { if (!allowed.has(k)) delete W.bridgeMapping[k]; });
+  }
+
+  _refreshBridgeVisual();
+}
+
+
+
+// Layout detector for the bridge visual grid (12-tile/6-tile standard only)
+function _detectBridgeLayout() {
+  if (W.bridgeVariant === '6') {
+    return { cols: 3, layout: [['H_top', 'W_top', 'E_top'], ['H_bot', 'W_bot', 'E_bot']] };
+  }
+  // Default 12-tile
+  return {
+    cols: 6,
+    layout: [
+      ['NW','H_top','H_top','H_top','H_top','NE'],
+      ['W_top','span_TL','span_T','span_T','span_TR','E_top'],
+      ['W_bot','span_BL','span_B','span_B','span_BR','E_bot'],
+      ['SW','H_bot','H_bot','H_bot','H_bot','SE'],
+    ]
+  };
+}
+
+function _refreshBridgeVisual() {
+  const grid = el('bridge-visual-grid');
+  if (!grid) return;
+
+  // Simple variant has its own render (simple-slots), not this grid
+  if (W.bridgeVariant === 'simple') {
+    _renderSimpleSlots();
+    return;
+  }
+
+  const {cols, layout} = _detectBridgeLayout();
+  const sz = Math.max(W.tileW, 16) * 2;
+
+  grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px`;
+  grid.innerHTML = '';
+
+  let assigned = 0;
+  layout.forEach(rowKeys => {
+    rowKeys.forEach(key => {
+      if (key === null) {
+        // Empty filler cell
+        const spacer = document.createElement('div');
+        spacer.style.cssText = `min-height:${sz}px;border-radius:4px;background:transparent`;
+        grid.appendChild(spacer);
+        return;
+      }
+
+      const role      = BRIDGE_ROLES.find(r => r.key === key);
+      const lid       = W.bridgeMapping[key];
+      const isActive  = W.bridgePickingRole === key;
+      const color     = BRIDGE_GROUP_COLORS[role?.group || 'border'];
+      const isAssigned= lid !== undefined;
+      if (isAssigned) assigned++;
+
+      const cell = document.createElement('div');
+      cell.style.cssText = `position:relative;min-height:${sz}px;cursor:pointer;border-radius:5px;
+        overflow:hidden;aspect-ratio:1;
+        border:2px solid ${isActive ? 'var(--accent)' : isAssigned ? color : 'rgba(255,255,255,.1)'};
+        background:${isAssigned ? 'transparent' : '#0b1221'};transition:border-color .12s`;
+
+      if (isAssigned && W.tilesB64[lid]) {
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${W.tilesB64[lid]}`;
+        img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;display:block;object-fit:cover';
+        cell.appendChild(img);
+      } else {
+        const lbl = document.createElement('div');
+        lbl.style.cssText = `position:absolute;inset:0;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;gap:2px;padding:2px;text-align:center`;
+        lbl.innerHTML = `<span style="color:${color};font-weight:700;font-size:.6rem">${role?.label||key}</span>
+          ${role?.required ? `<span style="color:var(--red);font-size:.5rem">wajib</span>` : ''}`;
+        cell.appendChild(lbl);
+      }
+
+      const tag = document.createElement('div');
+      tag.style.cssText = 'position:absolute;bottom:0;left:0;right:0;font-size:6px;font-weight:700;text-align:center;background:rgba(0,0,0,.65);color:#fff;line-height:1.5;pointer-events:none';
+      tag.textContent = role?.label || key;
+      cell.appendChild(tag);
+
+      if (isActive) {
+        const ring = document.createElement('div');
+        ring.style.cssText = 'position:absolute;inset:0;border:2px solid var(--accent);border-radius:3px;pointer-events:none;animation:pulse 1s infinite';
+        cell.appendChild(ring);
+      }
+
+      cell.onclick = () => {
+        _picking = {type:'bridge', roleKey: key};
+        W.bridgePickingRole = key;
+        _openPicker(`→ Assign "${role?.label}" (${role?.desc})`, lid);
+        _refreshBridgeVisual();
+      };
+      cell.title = `${role?.label}: ${isAssigned ? 'Tile #'+lid : role?.desc}`;
+      grid.appendChild(cell);
+    });
+  });
+
+  // "Add role" section — extra roles not in current layout
+  const layoutKeys = new Set(layout.flat().filter(Boolean));
+  const extraRoles = BRIDGE_ROLES.filter(r => !layoutKeys.has(r.key) && !(r.key in W.bridgeMapping));
+  if (extraRoles.length) {
+    const sep = document.createElement('div');
+    sep.style.cssText = `grid-column:span ${cols};font-size:.68rem;color:var(--muted);
+      padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px`;
+    sep.textContent = `+ role tambahan (opsional)`;
+    grid.appendChild(sep);
+    extraRoles.forEach(role => {
+      const color = BRIDGE_GROUP_COLORS[role.group || 'border'];
+      const pill = document.createElement('div');
+      pill.style.cssText = `display:flex;align-items:center;gap:4px;padding:4px 8px;
+        border-radius:16px;background:var(--surf);border:1px solid var(--border);
+        cursor:pointer;font-size:.7rem;font-weight:700`;
+      pill.innerHTML = `<span style="color:${color}">${role.label}</span>`;
+      pill.title = role.desc;
+      pill.onclick = () => {
+        _picking = {type:'bridge', roleKey: role.key};
+        W.bridgePickingRole = role.key;
+        _openPicker(`→ Assign "${role.label}" (${role.desc})`, undefined);
+        _refreshBridgeVisual();
+      };
+      grid.appendChild(pill);
+    });
+  }
+
+  // Roles already assigned but not in layout — show them too
+  const assignedExtra = Object.keys(W.bridgeMapping).filter(k => !layoutKeys.has(k));
+  assignedExtra.forEach(key => {
+    const role = BRIDGE_ROLES.find(r => r.key === key);
+    const lid  = W.bridgeMapping[key];
+    const color = BRIDGE_GROUP_COLORS[role?.group || 'border'];
+    const tag = document.createElement('div');
+    tag.style.cssText = `display:flex;align-items:center;gap:6px;padding:5px 8px;
+      border-radius:8px;background:var(--surf2);border:1px solid ${color};
+      cursor:pointer;font-size:.72rem`;
+    tag.innerHTML = `${W.tilesB64[lid] ? `<img src="data:image/png;base64,${W.tilesB64[lid]}" style="width:16px;height:16px;image-rendering:pixelated;border-radius:2px">` : ''}
+      <span style="color:${color};font-weight:700">${role?.label||key}</span>
+      <span class="txt-muted">#${lid}</span>
+      <button style="margin-left:auto;background:none;border:none;color:var(--dim);
+        cursor:pointer;font-size:.9rem;padding:2px 6px;border-radius:4px;touch-action:manipulation"
+        onclick="removeBridgeAssignment('${key}');event.stopPropagation()" title="Hapus assignment ini">✕</button>`;
+    grid.appendChild(tag);
+  });
+
+  if (W.bridgeVariant === 'custom') {
+    const { total, withTile } = _bridgeCustomStats();
+    setText('bridge-map-count', `${withTile}/${total} sel assigned`);
+  } else {
+    setText('bridge-map-count', `${assigned}/${BRIDGE_ROLES.filter(r=>r.required).length} wajib`);
+  }
+  updateSidebarMappingStatus();
+}
+
+function clearBridgeMapping() {
+  W.bridgeMapping = {}; W.bridgePickingRole = null;
+  closePicker();
+  _refreshBridgeVisual();
+}
+
+function removeBridgeAssignment(key) {
+  // Remove from bridgeMapping (standard variant)
+  delete W.bridgeMapping[key];
+
+  // Also remove from custom grid cells that use this key
+  _refreshBridgeVisual();
+  toast(`✕ Assignment "${key}" dihapus`);
+}
+
+function clearBridgeLayout() {
+  // Reset simple layout tiles
+  Object.keys(_simple.tiles).forEach(k => delete _simple.tiles[k]);
+  _renderSimpleSlots();
+  _updateSimpleStatus();
+}
+
+// ─── Mapping status ───────────────────────────────────────
+// ── Bridge status helpers — variant-aware ───────────────────────────────────
+function _bridgeCustomStats() {
+  if (W.bridgeVariant === 'simple') {
+    const total   = SIMPLE_CATS.length * _simple.n_rows;
+    const withTile = Object.keys(_simple.tiles).length;
+    return { total, withTile };
+  }
+  let total = 0, withTile = 0;
+  _custom.grid.forEach(row => row.forEach(cell => {
+    if (cell?.role) { total++; if (cell.tile !== null) withTile++; }
+  }));
+  return { total, withTile };
+}
+
+function _bridgeIsReady() {
+  if (W.bridgeVariant === 'simple')  return _simpleIsReady();
+  if (W.bridgeVariant === 'custom') {
+    const { withTile } = _bridgeCustomStats();
+    return withTile > 0;
+  }
+  return !!(W.bridgeMapping.H_top || W.bridgeMapping.H_bot);
+}
+
+function _bridgeMissingRequired() {
+  if (W.bridgeVariant === 'simple')  return _simpleIsReady() ? [] : ['span tile'];
+  if (W.bridgeVariant === 'custom') {
+    const { withTile } = _bridgeCustomStats();
+    return withTile === 0 ? ['minimal 1 tile'] : [];
+  }
+  return BRIDGE_ROLES.filter(r => r.required && !(r.key in W.bridgeMapping)).map(r => r.label);
+}
+
+function updateSidebarMappingStatus() {
+  const sbProg = el('sb-prog');
+  if (!sbProg) return;
+  if (W.type === 'terrain') {
+    const assigned = Object.keys(W.terrainMapping).length;
+    sbProg.textContent = `${assigned}/${LEVELS.length} level`;
+  } else if (W.type === 'bridge') {
+    if (W.bridgeVariant === 'custom') {
+      const { total, withTile } = _bridgeCustomStats();
+      sbProg.textContent = `${withTile}/${total} sel`;
+    } else {
+      const req   = BRIDGE_ROLES.filter(r => r.required).length;
+      const doneR = BRIDGE_ROLES.filter(r => r.required && r.key in W.bridgeMapping).length;
+      const total = Object.keys(W.bridgeMapping).length;
+      sbProg.textContent = `${doneR}/${req} wajib · ${total} total`;
+    }
+  }
+}
+
+
+
+// ── Step 4: Save ──────────────────────────────────────────
+function renderSavePanel() {
+  const name = el('ts-name-visible')?.value || el('ts-name')?.value || 'MyTileset';
+  const sn = el('save-name'); if (sn) sn.value = name;
+  const st = el('save-type'); if (st) st.value = W.type;
+
+  const assignedTerrain = Object.keys(W.terrainMapping).length;
+  const missingReq      = _bridgeMissingRequired();
+  const isReady         = _bridgeIsReady();
+
+  // Bridge summary text varies by variant
+  const bridgeSummaryLine = () => {
+    if (W.bridgeVariant === 'simple') {
+      const { withTile } = _bridgeCustomStats();
+      const sc = _simple.span_cols, cc = _simple.cap_cols, nr = _simple.n_rows;
+      return `${withTile} tile · Endcap ${cc}c×${nr}r · Span ${sc}c×${nr}r${_simple.mirror?' · mirror ✓':''}`;
+    }
+    if (W.bridgeVariant === 'custom') {
+      const { total, withTile } = _bridgeCustomStats();
+      return `${withTile}/${total} sel ter-assign · Custom (${_custom.rows}×${_custom.cols})`;
+    }
+    const assigned = Object.keys(W.bridgeMapping).length;
+    return `${assigned}/${BRIDGE_ROLES.length} role · ${W.bridgeVariant}-tile`;
+  };
+
+  const missingOptional = W.type === 'bridge'
+    && W.bridgeVariant !== 'custom'
+    && W.bridgeVariant !== 'simple'
+    ? BRIDGE_ROLES.filter(r => !r.required && !(r.key in W.bridgeMapping)).map(r => r.label)
+    : [];
+
+  const SUMMARIES = {
+    terrain: () => {
+      const ok = assignedTerrain >= 3;
+      return `<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+        <div style="font-size:2rem">🌍</div>
+        <div><div style="font-weight:700">Terrain Tileset</div>
+        <div style="font-size:.75rem;color:var(--muted)">${assignedTerrain}/${LEVELS.length} level di-mapping</div>
+        <span class="badge-conf ${ok?'conf-high':'conf-low'}">${ok?'Siap ✓':'Terlalu sedikit'}</span></div></div>
+        ${assignedTerrain < 3 ? '<div class="hint" style="border-color:var(--yellow)">⚠️ Minimal 3 level disarankan. Level kosong pakai AutoLight default.</div>' : ''}`;
+    },
+    bridge: () => `<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+        <div style="font-size:2rem">🌉</div>
+        <div><div style="font-weight:700">Bridge Tileset</div>
+        <div style="font-size:.75rem;color:var(--muted)">${bridgeSummaryLine()}</div>
+        <span class="badge-conf ${isReady?'conf-high':'conf-mid'}">${isReady?'Siap ✓':'Belum lengkap'}</span></div></div>
+        ${missingReq.length?`<div class="hint" style="border-color:var(--red)">⚠️ Role wajib belum diisi: <b>${missingReq.join(', ')}</b></div>`:''}
+        ${!missingReq.length&&missingOptional.length?`<div class="hint" style="border-color:var(--yellow)">ℹ️ Role opsional kosong: ${missingOptional.join(', ')}<br>Role kosong pakai default.</div>`:''}`,
+    unit:  () => `<div style="display:flex;gap:12px;align-items:center"><div style="font-size:2rem">🎮</div><div><div style="font-weight:700">Custom Unit</div><div style="font-size:.75rem;color:var(--muted)">${W.tilecount} tiles</div><span class="badge-conf conf-high">Siap ✓</span></div></div>`,
+    items: () => `<div style="display:flex;gap:12px;align-items:center"><div style="font-size:2rem">🏗️</div><div><div style="font-weight:700">Custom Items</div><div style="font-size:.75rem;color:var(--muted)">${W.tilecount} tiles</div><span class="badge-conf conf-high">Siap ✓</span></div></div>`,
+  };
+  const sum = el('step4-summary');
+  if (sum) sum.innerHTML = (SUMMARIES[W.type] || (() => ''))();
+}
+
+async function saveAndActivate() {
+  const name = el('save-name')?.value.trim();
+  if (!name) { toast('Isi nama tileset dulu', true); return; }
+  const btn = el('btn-save');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Menyimpan…'; }
+
+  const doActivate = el('activate-after-save')?.checked ?? true;
+  const payload = {
+    name,
+    type: W.type,    // backend expects "type", not "role"
+    png: W.pngB64,
+    tilecount: W.tilecount, columns: W.columns, tilewidth: W.tileW, tileheight: W.tileH,
+  };
+  if (W.type === 'terrain') {
+    payload.terrain_center_mapping = W.terrainMapping;
+    if (Object.keys(W.terrainBlockOverride).length) {
+      payload.terrain_block_overrides = W.terrainBlockOverride;
+    }
+  }
+  if (W.type === 'bridge') {
+    if (W.bridgeVariant === 'simple') {
+      if (!_simpleIsReady()) {
+        toast('Assign minimal satu Span tile sebelum menyimpan', true);
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Simpan & Aktifkan'; }
+        return;
+      }
+      payload.bridge_variant = 'simple';
+      payload.bridge_simple  = _simpleToBridgeData();
+    } else {
+      // Standard variant — validate span tiles exist
+      if (!_bridgeIsReady()) {
+        toast('Assign minimal H_top / H_bot sebelum menyimpan', true);
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Simpan & Aktifkan'; }
+        return;
+      }
+      payload.tiles          = W.bridgeMapping;
+      payload.bridge_variant = W.bridgeVariant;
+    }
+  }
+  if (doActivate) payload.activate = true;
+
+  console.debug('[saveAndActivate] payload:', JSON.stringify({...payload, png: '<omitted>'}));
+
+  try {
+    // Use /registry/register (not /activate) — register saves to disk + optionally activates
+    const res  = await fetch(`${API}/registry/register`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    console.debug('[saveAndActivate] response:', data);
+    if (data.error) throw new Error(data.error);
+    const fg = data.registered?.firstgid ?? data.firstgid ?? '?';
+    const result = el('save-result');
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = `<div class="save-result">
+        <div class="card-title"><span class="icon">✅</span> Tersimpan!</div>
+        <div style="font-size:.82rem;line-height:2">Nama: <b>${name}</b> · Tipe: <b>${W.type}</b> · GID: <b>${fg}</b>${doActivate?' · <span style="color:var(--ok)">Aktif ✓</span>':''}</div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <a href="/" class="btn btn-primary" style="flex:1;text-decoration:none">← Map Generator</a>
+          <button class="btn" style="flex:1" onclick="resetWizard()">Setup Lagi</button>
+        </div></div>`;
+    }
+    toast(`✅ "${name}" disimpan${doActivate?' & diaktifkan':''}`);
+    loadRegistryList();
+  } catch(e) {
+    console.error('[saveAndActivate] error:', e);
+    toast(e.message, true);
+  }
+  finally { if(btn) { btn.disabled = false; btn.textContent = '✅ Simpan & Aktifkan'; } }
+}
+
+function resetWizard() {
+  Object.assign(W, {step:1,type:null,pngB64:null,tilecount:0,tilesB64:[],metrics:[],
+    bridgeHints:[],zoomLevel:2,terrainMapping:{},terrainBlockOverride:{},
+    terrainPickingLevel:null, bridgeMapping:{},bridgePickingRole:null,
+    bridgeVariant:'12'});
+  _picking = null;
+  if (_apiAbort) { _apiAbort.abort(); _apiAbort = null; }
+  _sheetImg = null;
+  const canvas = el('sheet-canvas');
+  if (canvas) { canvas.width = 0; canvas.height = 0; }
+  Object.keys(EL).forEach(k => delete EL[k]); // clear DOM cache
+  el('drop-label').innerHTML = '<div style="font-size:2.5rem;margin-bottom:8px">🖼️</div><div style="font-weight:700;font-size:.9rem">Tap untuk pilih file</div>';
+  ['ts-name','ts-name-visible'].forEach(id => { const e=$(id); if(e) e.value=''; });
+  show('name-field-wrap', false); show('type-card', false);
+  show('step1-next', false); show('status-bar', false); show('save-result', false);
+  [2,3,4].forEach(i => { const t=$(`tab${i}`); if(t) t.disabled=true; });
+  goStep(1);
+}
+
+// ── Registry management ───────────────────────────────────
+const TYPE_ICONS = {terrain:'🌍', bridge:'🌉', unit:'🎮', items:'🏗️'};
+
+async function loadRegistryList() {
+  const list = el('registry-list');
+  if (!list) return;
+  list.innerHTML = '<div style="font-size:.78rem;color:var(--muted)">Memuat…</div>';
+  try {
+    // Also get active tileset info from server state
+    const [regRes, stateRes] = await Promise.all([
+      fetch(`${API}/registry`),
+      fetch(`${API}/rpc/get_state_snapshot`, {method:'POST',
+        headers:{'Content-Type':'application/json'}, body:'{}'}),
+    ]);
+    const regData   = await regRes.json();
+    const stateData = await stateRes.json();
+    const activeTilesets = stateData?.result?.snapshot?.meta || stateData?.snapshot?.meta || {};
+    const activeKeys     = activeTilesets.custom_terrain_mapping_keys || [];
+    const activeBridge   = activeTilesets.active_bridge || '';
+
+    const tilesets = regData.tilesets || {};
+    const entries  = Object.entries(tilesets);
+
+    if (!entries.length) {
+      list.innerHTML = '<div style="font-size:.78rem;color:var(--muted)">Belum ada tileset tersimpan.<br>Upload tileset di Step 1–3 lalu simpan.</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    // Group by type
+    const groups = {};
+    entries.forEach(([name, ts]) => {
+      const t = ts.type || 'other';
+      (groups[t] ??= []).push([name, ts]);
+    });
+
+    const typeOrder = ['terrain','bridge','unit','items'];
+    [...typeOrder, ...Object.keys(groups).filter(k => !typeOrder.includes(k))].forEach(type => {
+      const items = groups[type];
+      if (!items?.length) return;
+
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 0 4px;font-weight:700;border-top:1px solid var(--border);margin-top:4px';
+      hdr.textContent = `${TYPE_ICONS[type]||'📦'} ${type}`;
+      frag.appendChild(hdr);
+
+      items.forEach(([name, ts]) => {
+        const isActive = type === 'bridge'
+          ? activeBridge === name
+          : activeKeys.some(k => k.includes(name));
+
+        const row = document.createElement('div');
+        row.className = 'reg-item';
+
+        const info = document.createElement('div');
+        info.className = 'reg-item-info';
+        info.innerHTML = `
+          <div class="reg-item-name">${name}</div>
+          <div class="reg-item-sub">GID ${ts.firstgid} · ${ts.tilecount} tiles · ${ts.columns} col · ${ts.tilewidth||20}×${ts.tileheight||20}px</div>`;
+
+        const btns = document.createElement('div');
+        btns.className = 'reg-item-btns';
+
+        if (isActive) {
+          const badge = document.createElement('span');
+          badge.className = 'reg-item-active';
+          badge.textContent = '● Aktif';
+          btns.appendChild(badge);
+
+          const deactBtn = document.createElement('button');
+          deactBtn.className = 'btn btn-sm';
+          deactBtn.style.cssText = 'border-color:var(--yellow);color:var(--yellow);font-size:.7rem';
+          deactBtn.textContent = '⏹ Non-aktif';
+          deactBtn.onclick = () => deactivateFromList(name, type, row);
+          btns.appendChild(deactBtn);
+        } else {
+          const actBtn = document.createElement('button');
+          actBtn.className = 'btn btn-sm';
+          actBtn.style.cssText = 'border-color:var(--green);color:var(--green);font-size:.7rem';
+          actBtn.textContent = '▶ Aktifkan';
+          actBtn.onclick = () => activateFromList(name, type, actBtn);
+          btns.appendChild(actBtn);
+        }
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn btn-sm';
+        delBtn.style.cssText = 'border-color:var(--red);color:var(--red);font-size:.7rem';
+        delBtn.textContent = '🗑';
+        delBtn.title = 'Hapus dari registry';
+        delBtn.onclick = () => deleteFromList(name, row);
+        btns.appendChild(delBtn);
+
+        row.appendChild(info); row.appendChild(btns);
+        frag.appendChild(row);
+      });
+    });
+
+    list.appendChild(frag);
+  } catch(e) {
+    if (list) list.innerHTML = `<div style="font-size:.78rem;color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function activateFromList(name, role, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const res  = await fetch(`${API}/registry/activate`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, role})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    toast(`✅ "${name}" diaktifkan`);
+    loadRegistryList();
+  } catch(e) {
+    toast(e.message, true);
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Aktifkan'; }
+  }
+}
+
+async function deactivateFromList(name, role, row) {
+  try {
+    const res  = await fetch(`${API}/registry/deactivate`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, role})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    toast(`⏹ "${name}" dinonaktifkan`);
+    loadRegistryList();
+  } catch(e) { toast(e.message, true); }
+}
+
+async function deleteFromList(name, row) {
+  // Confirm
+  row.style.opacity = '.5';
+  const confirm = document.createElement('div');
+  confirm.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;font-size:.75rem';
+  confirm.innerHTML = `<span class="txt-red">Hapus "${name}"?</span>
+    <button class="btn btn-sm" style="border-color:var(--red);color:var(--red);font-size:.7rem"
+      onclick="confirmDelete('${name}', this.closest('.reg-item'))">Ya, Hapus</button>
+    <button class="btn btn-sm" style="font-size:.7rem"
+      onclick="this.closest('.reg-item').style.opacity='1';this.parentElement.remove()">Batal</button>`;
+  row.appendChild(confirm);
+}
+
+async function confirmDelete(name, row) {
+  try {
+    const res = await fetch(`${API}/registry/${encodeURIComponent(name)}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    row.style.transition = 'opacity .3s';
+    row.style.opacity = '0';
+    setTimeout(() => row.remove(), 300);
+    toast(`🗑 "${name}" dihapus dari registry`);
+  } catch(e) { toast(e.message, true); if(row) row.style.opacity='1'; }
+}
+
+// ── Toast ─────────────────────────────────────────────────
+let _tt;
+function toast(msg, err=false) {
+  const t = el('toast');
+  if (!t) return;
+  t.textContent = msg; t.className = `toast show${err?' err':''}`;
+  clearTimeout(_tt); _tt = setTimeout(() => t.className='toast', 3200);
+}
+
+</script>
+</html>
