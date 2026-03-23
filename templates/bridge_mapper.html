@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bridge Tile Mapper</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+
+  .app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px; min-width: 260px; background: #16213e;
+    border-right: 1px solid #0f3460; display: flex; flex-direction: column;
+    padding: 16px; gap: 12px; overflow-y: auto;
+  }
+  .sidebar h2 { font-size: 14px; font-weight: 700; color: #e94560; letter-spacing: .05em; text-transform: uppercase; }
+
+  .upload-area {
+    border: 2px dashed #0f3460; border-radius: 8px; padding: 20px;
+    text-align: center; cursor: pointer; transition: border-color .2s;
+    font-size: 12px; color: #888;
+  }
+  .upload-area:hover, .upload-area.drag { border-color: #e94560; color: #e0e0e0; }
+  .upload-area input { display: none; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .04em; }
+  .field input {
+    background: #0f3460; border: 1px solid #1a4a8a; border-radius: 4px;
+    color: #e0e0e0; padding: 6px 8px; font-size: 13px; width: 100%;
+  }
+  .field input:focus { outline: none; border-color: #e94560; }
+
+  .btn {
+    padding: 8px 14px; border: none; border-radius: 6px; font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-primary  { background: #e94560; color: #fff; width: 100%; }
+  .btn-secondary{ background: #0f3460; color: #e0e0e0; }
+  .btn-success  { background: #27ae60; color: #fff; width: 100%; }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  .role-list { display: flex; flex-direction: column; gap: 4px; }
+  .role-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; border-radius: 5px; background: #0f3460;
+    font-size: 12px; cursor: pointer; border: 2px solid transparent;
+    transition: border-color .15s;
+  }
+  .role-item:hover   { border-color: #4a90d9; }
+  .role-item.active  { border-color: #e94560; }
+  .role-item .dot    { width: 10px; height: 10px; border-radius: 50%; }
+  .role-item .badge  {
+    font-size: 10px; padding: 2px 6px; border-radius: 10px;
+    background: #1a4a8a; color: #a0c4ff;
+  }
+  .role-item .badge.assigned { background: #27ae60; color: #fff; }
+
+  .hint-bar { font-size: 10px; color: #aaa; padding: 6px 0; }
+  .hint-bar strong { color: #e0e0e0; }
+
+  .section-title {
+    font-size: 11px; color: #888; text-transform: uppercase;
+    letter-spacing: .05em; padding: 4px 0; border-top: 1px solid #0f3460;
+    margin-top: 4px;
+  }
+
+  /* ── Main grid area ── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .toolbar {
+    background: #16213e; border-bottom: 1px solid #0f3460;
+    padding: 10px 16px; display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .toolbar span { font-size: 12px; color: #888; }
+  .toolbar strong { color: #e0e0e0; }
+  .zoom-ctrl { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .zoom-ctrl button {
+    background: #0f3460; border: none; color: #e0e0e0;
+    width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 14px;
+  }
+
+  .grid-viewport { flex: 1; overflow: auto; padding: 16px; }
+  .grid-wrap { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+
+  .tile-cell {
+    position: relative; cursor: pointer; border-radius: 3px;
+    border: 2px solid transparent; transition: border-color .1s, transform .1s;
+    flex-shrink: 0;
+  }
+  .tile-cell:hover { border-color: #4a90d9; transform: scale(1.08); z-index: 2; }
+  .tile-cell.selected { border-color: #e94560 !important; transform: scale(1.1); z-index: 3; }
+  .tile-cell img { display: block; image-rendering: pixelated; }
+
+  .tile-cell .role-tag {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(233,69,96,.9); color: #fff;
+    font-size: 7px; font-weight: 700; text-align: center;
+    line-height: 1.4; border-radius: 0 0 2px 2px;
+    pointer-events: none;
+  }
+  .tile-cell .hint-overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 2px; pointer-events: none; opacity: .35;
+  }
+
+  /* hint colors */
+  .hint-span_H  { background: #3498db; }
+  .hint-span_V  { background: #9b59b6; }
+  .hint-corner  { background: #e67e22; }
+  .hint-border_N{ background: #1abc9c; }
+  .hint-border_S{ background: #16a085; }
+
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; color: #555;
+  }
+  .empty-state svg { opacity: .3; }
+  .empty-state p { font-size: 14px; }
+
+  /* ── Mapping table ── */
+  .mapping-panel {
+    background: #16213e; border-top: 1px solid #0f3460;
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap;
+  }
+  .mapping-tag {
+    display: flex; align-items: center; gap: 5px;
+    background: #0f3460; border-radius: 5px; padding: 4px 8px; font-size: 11px;
+  }
+  .mapping-tag img { image-rendering: pixelated; border-radius: 2px; }
+  .mapping-tag .x {
+    cursor: pointer; color: #e94560; font-weight: 700; margin-left: 2px;
+  }
+
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; background: #27ae60;
+    color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px;
+    font-weight: 600; z-index: 999; opacity: 0; transition: opacity .3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .toast.error { background: #e94560; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ── Sidebar ── -->
+  <div class="sidebar">
+    <h2>🌉 Bridge Mapper</h2>
+
+    <!-- Upload -->
+    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept="image/png,.tmx">
+      <div id="uploadLabel">Drop PNG or TMX here<br><small>or click to browse</small></div>
+    </div>
+
+    <!-- Tileset params -->
+    <div class="field">
+      <label>Tileset Name</label>
+      <input type="text" id="tsName" placeholder="e.g. Forest" value="MyBridge">
+    </div>
+    <div style="display:flex;gap:8px">
+      <div class="field" style="flex:1">
+        <label>Columns</label>
+        <input type="number" id="tsColumns" value="3" min="1" max="64">
+      </div>
+      <div class="field" style="flex:1">
+        <label>Tile W</label>
+        <input type="number" id="tsTileW" value="20" min="8" max="128">
+      </div>
+      <div class="field" style="flex:1">
+        <label>Tile H</label>
+        <input type="number" id="tsTileH" value="20" min="8" max="128">
+      </div>
+    </div>
+    <button class="btn btn-primary" id="loadBtn" disabled onclick="loadSheet()">Load Sheet</button>
+
+    <!-- Role picker -->
+    <div class="section-title">Bridge Roles</div>
+    <div class="hint-bar">
+      Click a role → click tile(s) to assign.<br>
+      <strong>Colored overlay</strong> = hint from pixel analysis.
+    </div>
+
+    <div class="role-list" id="roleList"></div>
+
+    <div class="section-title">Hint Legend</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px">
+      <span><span style="color:#3498db">■</span> Span H</span>
+      <span><span style="color:#9b59b6">■</span> Span V</span>
+      <span><span style="color:#e67e22">■</span> Corner</span>
+      <span><span style="color:#1abc9c">■</span> Border N/S</span>
+    </div>
+
+    <div class="section-title">Actions</div>
+    <button class="btn btn-secondary" style="width:100%" onclick="clearAll()">Clear All</button>
+    <button class="btn btn-success"   id="saveBtn" disabled onclick="saveMapping()">Save to Registry</button>
+  </div>
+
+  <!-- ── Main ── -->
+  <div class="main">
+    <div class="toolbar" id="toolbar" style="display:none">
+      <span>Tileset: <strong id="toolbarName">-</strong></span>
+      <span><strong id="tileCountLabel">0</strong> tiles</span>
+      <div class="zoom-ctrl">
+        <span>Zoom</span>
+        <button onclick="zoom(-1)">−</button>
+        <strong id="zoomLabel">3×</strong>
+        <button onclick="zoom(+1)">+</button>
+      </div>
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="showHints" checked onchange="renderGrid()">
+        Show hints
+      </label>
+    </div>
+
+    <div class="grid-viewport" id="gridViewport">
+      <div class="empty-state" id="emptyState">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+        </svg>
+        <p>Load a bridge tileset PNG to begin</p>
+      </div>
+      <div class="grid-wrap" id="tileGrid" style="display:none"></div>
+    </div>
+
+    <div class="mapping-panel" id="mappingPanel" style="display:none">
+      <span style="font-size:11px;color:#888">Assigned:</span>
+      <div id="mappingTags" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────
+const ROLES = [
+  { key:'NW',    label:'NW Corner',     color:'#e74c3c' },
+  { key:'N',     label:'N Border',      color:'#1abc9c' },
+  { key:'NE',    label:'NE Corner',     color:'#e74c3c' },
+  { key:'W_top', label:'W Top',         color:'#9b59b6' },
+  { key:'H_top', label:'H Top (span)',  color:'#3498db' },
+  { key:'E_top', label:'E Top',         color:'#9b59b6' },
+  { key:'W_bot', label:'W Bottom',      color:'#8e44ad' },
+  { key:'H_bot', label:'H Bottom (span)',color:'#2980b9' },
+  { key:'E_bot', label:'E Bottom',      color:'#8e44ad' },
+  { key:'SW',    label:'SW Corner',     color:'#e74c3c' },
+  { key:'S',     label:'S Border',      color:'#16a085' },
+  { key:'SE',    label:'SE Corner',     color:'#e74c3c' },
+];
+
+let state = {
+  pngB64:    null,
+  tilecount: 0,
+  columns:   3,
+  tileW:     20,
+  tileH:     20,
+  name:      'MyBridge',
+  tiles:     [],   // [{id, mean_rgb, bridge_hints, ...}]
+  tilesB64:  [],   // individual tile PNGs
+  mapping:   {},   // role → tile_id
+  activeRole: null,
+  zoomLevel: 3,
+};
+
+const API = window.location.origin;
+
+// ── Role list ──────────────────────────────────────────────────
+function buildRoleList() {
+  const list = document.getElementById('roleList');
+  list.innerHTML = '';
+  ROLES.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'role-item' + (state.activeRole === r.key ? ' active' : '');
+    div.onclick = () => selectRole(r.key);
+
+    const assigned = r.key in state.mapping;
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="dot" style="background:${r.color}"></div>
+        <span>${r.label}</span>
+      </div>
+      <span class="badge ${assigned ? 'assigned' : ''}">${assigned ? '✓ #'+state.mapping[r.key] : '—'}</span>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function selectRole(key) {
+  state.activeRole = state.activeRole === key ? null : key;
+  buildRoleList();
+  renderGrid();
+}
+
+// ── File loading ───────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+  const reader = new FileReader();
+  if (file.name.endsWith('.tmx')) {
+    reader.onload = e => parseTMX(e.target.result);
+    reader.readAsText(file);
+  } else {
+    reader.onload = e => {
+      state.pngB64 = e.target.result.split(',')[1];
+      document.getElementById('uploadLabel').textContent = file.name;
+      document.getElementById('loadBtn').disabled = false;
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function parseTMX(xml) {
+  // Extract non-builtin tilesets from TMX
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'application/xml');
+  const BUILTIN = new Set(['AutoLight','large-rock','export_items','50pCommandCenter','export_units']);
+
+  const tilesets = [...doc.querySelectorAll('tileset')].filter(ts => {
+    const name = ts.getAttribute('name') || '';
+    const fg = parseInt(ts.getAttribute('firstgid') || '1');
+    return !BUILTIN.has(name) && fg > 349;
+  });
+
+  if (tilesets.length === 0) { showToast('No custom tilesets found in TMX', true); return; }
+
+  // Use first non-builtin tileset
+  const ts = tilesets[0];
+  const name = ts.getAttribute('name') || 'bridge';
+  const cols = parseInt(ts.getAttribute('columns') || '3');
+  const tc   = parseInt(ts.getAttribute('tilecount') || '12');
+  const tw   = parseInt(ts.getAttribute('tilewidth')  || '20');
+  const th   = parseInt(ts.getAttribute('tileheight') || '20');
+
+  // Extract embedded_png
+  let png = '';
+  ts.querySelectorAll('property').forEach(p => {
+    if (p.getAttribute('name') === 'embedded_png') {
+      png = (p.getAttribute('value') || p.textContent || '').replace(/\s/g,'');
+    }
+  });
+
+  if (!png) { showToast('No embedded PNG in tileset', true); return; }
+
+  document.getElementById('tsName').value    = name;
+  document.getElementById('tsColumns').value = cols;
+  document.getElementById('tsTileW').value   = tw;
+  document.getElementById('tsTileH').value   = th;
+  state.pngB64 = png;
+  document.getElementById('uploadLabel').textContent = name + ' (from TMX)';
+  document.getElementById('loadBtn').disabled = false;
+  showToast(`Found: ${name} (${tc} tiles)`);
+}
+
+// ── Load & analyze ─────────────────────────────────────────────
+async function loadSheet() {
+  const name    = document.getElementById('tsName').value.trim() || 'bridge';
+  const columns = parseInt(document.getElementById('tsColumns').value) || 3;
+  const tw      = parseInt(document.getElementById('tsTileW').value)   || 20;
+  const th      = parseInt(document.getElementById('tsTileH').value)   || 20;
+
+  if (!state.pngB64) { showToast('No PNG loaded', true); return; }
+
+  // Compute tilecount from image dimensions
+  const img = new Image();
+  img.src = 'data:image/png;base64,' + state.pngB64;
+  await new Promise(r => img.onload = r);
+  const rows = Math.floor(img.height / th);
+  const tilecount = rows * columns;
+
+  document.getElementById('loadBtn').disabled = true;
+  document.getElementById('loadBtn').textContent = 'Analyzing…';
+
+  try {
+    // Parallel: analyze metrics + extract tile PNGs
+    const [analysisRes, tilesRes] = await Promise.all([
+      fetch(`${API}/registry/analyze`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ png: state.pngB64, tilecount, columns, tilewidth: tw, tileheight: th })
+      }),
+      fetch(`${API}/registry/tiles`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ png: state.pngB64, tilecount, columns, tilewidth: tw, tileheight: th })
+      }),
+    ]);
+
+    const analysis = await analysisRes.json();
+    const tilesData = await tilesRes.json();
+
+    if (analysis.error) throw new Error(analysis.error);
+    if (tilesData.error) throw new Error(tilesData.error);
+
+    state.name      = name;
+    state.tilecount = tilecount;
+    state.columns   = columns;
+    state.tileW     = tw;
+    state.tileH     = th;
+    state.tiles     = analysis.tiles;
+    state.tilesB64  = tilesData.tiles;
+    state.mapping   = {};
+    state.activeRole = ROLES[0].key;
+
+    document.getElementById('toolbar').style.display     = '';
+    document.getElementById('emptyState').style.display  = 'none';
+    document.getElementById('tileGrid').style.display    = '';
+    document.getElementById('mappingPanel').style.display = '';
+    document.getElementById('toolbarName').textContent   = name;
+    document.getElementById('tileCountLabel').textContent = tilecount;
+    document.getElementById('saveBtn').disabled = false;
+
+    renderGrid();
+    buildRoleList();
+    showToast(`Loaded ${tilecount} tiles`);
+  } catch(e) {
+    showToast(e.message, true);
+  } finally {
+    document.getElementById('loadBtn').disabled = false;
+    document.getElementById('loadBtn').textContent = 'Load Sheet';
+  }
+}
+
+// ── Grid render ────────────────────────────────────────────────
+function renderGrid() {
+  const grid     = document.getElementById('tileGrid');
+  const showHint = document.getElementById('showHints')?.checked ?? true;
+  const z        = state.zoomLevel;
+  const HINT_THRESHOLD = 0.08;
+
+  // Reverse mapping: tile_id → role
+  const tileToRole = {};
+  Object.entries(state.mapping).forEach(([role, tid]) => tileToRole[tid] = role);
+
+  // Role → color map
+  const roleColor = Object.fromEntries(ROLES.map(r => [r.key, r.color]));
+
+  // Best hint per tile (vectorized in JS via map)
+  const bestHints = state.tiles.map(t => {
+    const h = t.bridge_hints;
+    const candidates = [
+      ['span_H', h.span_H], ['span_V', h.span_V],
+      ['corner', h.corner], ['border_N', h.border_N], ['border_S', h.border_S],
+    ];
+    const best = candidates.reduce((a, b) => b[1] > a[1] ? b : a);
+    return best[1] >= HINT_THRESHOLD ? best : null;
+  });
+
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${state.columns}, ${state.tileW * z}px)`;
+  grid.style.display = 'grid';
+  grid.style.gap = '3px';
+
+  const HINT_CLASS = {
+    span_H: 'hint-span_H', span_V: 'hint-span_V',
+    corner: 'hint-corner', border_N: 'hint-border_N', border_S: 'hint-border_S',
+  };
+
+  state.tiles.forEach((tile, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'tile-cell';
+    cell.style.width  = (state.tileW * z) + 'px';
+    cell.style.height = (state.tileH * z) + 'px';
+
+    const assignedRole = tileToRole[i];
+    if (assignedRole) {
+      cell.style.borderColor = roleColor[assignedRole];
+      cell.innerHTML += `<div class="role-tag">${assignedRole}</div>`;
+    }
+
+    if (showHint && bestHints[i] && !assignedRole) {
+      cell.innerHTML += `<div class="hint-overlay ${HINT_CLASS[bestHints[i][0]]}"></div>`;
+    }
+
+    const img = document.createElement('img');
+    img.src    = 'data:image/png;base64,' + state.tilesB64[i];
+    img.width  = state.tileW * z;
+    img.height = state.tileH * z;
+    img.title  = `#${i}  RGB(${tile.mean_rgb.join(',')})  h:${tile.h_sym} v:${tile.v_sym}`;
+    cell.insertBefore(img, cell.firstChild);
+
+    cell.onclick = () => onTileClick(i);
+    grid.appendChild(cell);
+  });
+}
+
+function onTileClick(tileId) {
+  if (!state.activeRole) return;
+
+  // Un-assign any tile that had this role
+  const prev = Object.entries(state.mapping).find(([,tid]) => tid === tileId);
+  if (prev) delete state.mapping[prev[0]];
+
+  // Toggle: clicking same tile again = unassign
+  if (state.mapping[state.activeRole] === tileId) {
+    delete state.mapping[state.activeRole];
+  } else {
+    state.mapping[state.activeRole] = tileId;
+    // Auto-advance to next unassigned role
+    const nextRole = ROLES.find(r => !(r.key in state.mapping) && r.key !== state.activeRole);
+    if (nextRole) state.activeRole = nextRole.key;
+  }
+
+  buildRoleList();
+  renderGrid();
+  updateMappingPanel();
+}
+
+function updateMappingPanel() {
+  const tags = document.getElementById('mappingTags');
+  tags.innerHTML = '';
+  Object.entries(state.mapping).forEach(([role, tid]) => {
+    const tag = document.createElement('div');
+    tag.className = 'mapping-tag';
+    tag.innerHTML = `
+      <img src="data:image/png;base64,${state.tilesB64[tid]}"
+           width="${state.tileW}" height="${state.tileH}" style="image-rendering:pixelated">
+      <span>${role} → #${tid}</span>
+      <span class="x" onclick="unassign('${role}')">✕</span>
+    `;
+    tags.appendChild(tag);
+  });
+}
+
+function unassign(role) {
+  delete state.mapping[role];
+  buildRoleList();
+  renderGrid();
+  updateMappingPanel();
+}
+
+function clearAll() {
+  state.mapping = {};
+  buildRoleList();
+  renderGrid();
+  updateMappingPanel();
+}
+
+// ── Zoom ──────────────────────────────────────────────────────
+function zoom(dir) {
+  state.zoomLevel = Math.min(8, Math.max(1, state.zoomLevel + dir));
+  document.getElementById('zoomLabel').textContent = state.zoomLevel + '×';
+  renderGrid();
+}
+
+// ── Save to registry ───────────────────────────────────────────
+async function saveMapping() {
+  if (Object.keys(state.mapping).length === 0) {
+    showToast('No roles assigned yet', true); return;
+  }
+
+  const payload = {
+    name:      state.name,
+    role:      'bridge',
+    png:       state.pngB64,
+    tilecount: state.tilecount,
+    columns:   state.columns,
+    tilewidth: state.tileW,
+    tileheight: state.tileH,
+    tiles:     state.mapping,   // { NW: 0, N: 1, ... }
+    activate:  true,
+  };
+
+  try {
+    const res = await fetch(`${API}/registry/activate`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`✓ Saved "${state.name}" — firstgid ${data.registered?.firstgid}`);
+  } catch(e) {
+    showToast(e.message, true);
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, error=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (error ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = 'toast', 3000);
+}
+
+// ── Init ──────────────────────────────────────────────────────
+buildRoleList();
+</script>
+</body>
+</html>
