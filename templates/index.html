@@ -179,9 +179,9 @@ header::after {
   display: block;
   width: 100%;
   height: auto;
-  image-rendering: pixelated;
 }
 #map-canvas {
+  image-rendering: pixelated;
   cursor: crosshair;
   touch-action: none;
 }
@@ -190,6 +190,7 @@ header::after {
   inset: 0;
   width: 100%;
   height: 100%;
+  image-rendering: auto;
   pointer-events: none;
 }
 
@@ -311,11 +312,6 @@ header::after {
 .pn { font-size: .6rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; letter-spacing: .02em; }
 
 /* ── SEED GRID ── */
-#seed-grid {
-  display: grid;
-  grid-template-columns: repeat(5,1fr);
-  gap: 5px;
-}
 .seed-cell {
   aspect-ratio: 1;
   border-radius: 6px;
@@ -1582,27 +1578,25 @@ function setupCanvas(w, h) {
   // Overlay canvas: display resolution (tileSize px/cell) so CC text renders crisp
   // tileSize is computed just after, so we use computeTileSize here first
   const _ts = computeTileSize(w, h);
+  const displayW = Math.max(1, Math.round(w * _ts));
+  const displayH = Math.max(1, Math.round(h * _ts));
   const dpr = window.devicePixelRatio || 1;
-  ov.width  = Math.round(w * _ts);
-  ov.height = Math.round(h * _ts);
+  cv.style.width = displayW + "px";
+  cv.style.height = displayH + "px";
+  ov.style.width = displayW + "px";
+  ov.style.height = displayH + "px";
+  // High-DPI backing store for crisp CC number labels.
+  ov.width  = Math.round(displayW * dpr);
+  ov.height = Math.round(displayH * dpr);
 
   // container width: 100% at zoom=1, scaled at zoom>1 (enables panning)
   const mc   = $("map-container");
-  const wrap = $("canvas-wrap");
-  if (mc && wrap) {
-    if (S.zoomScale === 1) {
-      mc.style.width = "100%";
-      // Remove explicit pixel width to let CSS 100% work cleanly
-      mc.style.removeProperty && mc.style.removeProperty('width');
-      mc.style.width = "100%";
-    } else {
-      const baseW = wrap.clientWidth;
-      // Integer width prevents sub-pixel gaps between tiles
-      mc.style.width = Math.floor(baseW * S.zoomScale) + "px";
-    }
+  if (mc) {
+    // Explicit pixel width avoids fractional CSS widths that can produce tile seams on Chrome mobile.
+    mc.style.width = displayW + "px";
   }
 
-  tileSize = computeTileSize(w, h); // px/cell for hit-testing
+  tileSize = displayW / w; // px/cell for hit-testing and overlay alignment
 
   const hint = $("map-size-hint");
   if (hint) hint.textContent = `${w}×${h}`;
@@ -1616,6 +1610,7 @@ function redraw(){
 
   const view=S.step<=1?"coastline":S.step===6&&snap.matrices.id_matrix?"final":"height";
   const ctx=getCtx();
+  ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0,0,getCanvas().width,getCanvas().height);
 
   if(view==="coastline"&&snap.matrices.coastline_height_map){
@@ -1642,15 +1637,25 @@ function redraw(){
     renderBridgeFallback(ctx,snap.matrices.bridge_matrix,w,h);
 
   // CC + Resource dots → overlay canvas at display resolution (1 overlay px = 1 screen px)
+  const ov = getOverlay();
   const ovCtx = getOvCtx();
-  ovCtx.clearRect(0,0,getOverlay().width,getOverlay().height);
+  const dpr = window.devicePixelRatio || 1;
+  ovCtx.setTransform(1,0,0,1,0,0);
+  ovCtx.clearRect(0,0,ov.width,ov.height);
+  ovCtx.setTransform(dpr,0,0,dpr,0,0);
+  ovCtx.imageSmoothingEnabled = true;
   if(S.step>=3) renderCCOverlay(ovCtx,snap,w,h,tileSize,tileSize);
   if(S.step>=4) renderDots(ovCtx,snap.resource_positions,RES_COLOR,w,h,tileSize);
 
   drawPolygonOverlay();
 }
 
-function renderHeightMap(ctx,mat,w,h,isCoastline=false,ts=1){
+function renderHeightMap(ctx,mat,w,h,arg5=false,arg6=1){
+  // Backward compatible signature:
+  // old: renderHeightMap(ctx, mat, w, h, isCoastline, ts)
+  // new: renderHeightMap(ctx, mat, w, h, ts, isCoastline)
+  const isCoastline = (typeof arg5 === "boolean") ? arg5 : !!arg6;
+  const ts = (typeof arg5 === "number") ? arg5 : (typeof arg6 === "number" ? arg6 : 1);
   const data=mat.data;
   const palette=isCoastline?COASTLINE_COLORS:HEIGHT_COLORS;
   const bm=S.snap?.matrices?.bridge_matrix?.data;
@@ -1668,7 +1673,6 @@ function renderTileLayer(ctx,mat,w,h,key,isGround,ts=1){
   const img=S.tileImgs[key];
   if(!ts_info||!img) return;
   const data=mat.data;
-  const ts=1; // canvas 1px/cell
   const {columns,tileWidth,tileHeight}=ts_info;
   // For ground: tile index is direct (TILE_ID_OFFSET is added on write, not stored in matrix)
   // For items/units: value is GID, subtract firstGid to get tile index
@@ -1850,7 +1854,7 @@ function renderCCOverlay(ctx, snap, w, h, coordTs, sizeTs){
     ctx.stroke();
 
     // Number — render at 2× then draw scaled for sub-pixel crispness
-    ctx.font=`900 ${fontSize}px Arial, sans-serif`;
+    ctx.font=`900 ${fontSize}px "IBM Plex Mono", "Space Grotesk", Arial, sans-serif`;
     ctx.textAlign="center"; ctx.textBaseline="middle";
     // Thin black halo (~20% font size) then fill — keeps number readable
     ctx.lineJoin="round";
@@ -1889,10 +1893,11 @@ const CC_GID_NUM = {
   101:1,106:2,102:3,107:4,103:5,108:6,104:7,109:8,105:9,110:10
 };
 
-// renderCCBoxes — draws CC on main canvas (1px/cell coords, tileSize for sizing)
-function renderCCBoxes(ctx,snap,w,h){ renderCCOverlay(ctx,snap,w,h,1,tileSize); }
-
 function renderDots(ctx, positions, color, w, h, ts=1){
+  // Allow compact form: renderDots(ctx, positions, color, ts)
+  if (h === undefined && typeof w === "number") {
+    ts = w;
+  }
   if(!positions||!positions.length) return;
   ctx.fillStyle=color;
   const r2=Math.max(1, ts*1.5);
@@ -1908,7 +1913,11 @@ function renderDots(ctx, positions, color, w, h, ts=1){
 // ═══════════════════════════════════════════════════════════
 function drawPolygonOverlay(){
   const ov=getOverlay(); const ctx=getOvCtx();
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,ov.width,ov.height);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.imageSmoothingEnabled = true;
   // Redraw CC+dots since overlay was cleared
   if(S.snap&&S.step>=3) renderCCOverlay(ctx,S.snap,S.snap.meta.width,S.snap.meta.height,tileSize,tileSize);
   if(S.snap&&S.step>=4) renderDots(ctx,S.snap.resource_positions,RES_COLOR,S.snap.meta.width,S.snap.meta.height,tileSize);
@@ -3104,7 +3113,7 @@ $("btn-export").onclick=async()=>{
     markDone(6); redraw();
     bar.style.width="100%";
     // Show preview modal before download
-    await showPreview(res.tmx_bytes, res.snapshot, $("map-canvas"));
+    await showPreview(res.tmx_bytes, res.snapshot);
     toast("✅ Preview siap — klik Download ZIP",3000);
   }catch(e){ toast("❌ "+e.message) }
   finally{ hideLoad(); setTimeout(()=>{prog.style.display="none";bar.style.width="0%"},1500) }
@@ -3244,7 +3253,7 @@ $("btn-quick-gen").onclick=async()=>{
 $("btn-quick-dl").onclick=async()=>{
   if(!_quickTmxB64){ toast("Generate dulu!"); return }
   const snap=S.snap||{cc_positions:[],meta:{pattern:iv("q-ts")}};
-  await showPreview(_quickTmxB64, snap, $("quick-canvas"));
+  await showPreview(_quickTmxB64, snap);
 };
 
 function renderQuickCanvas(canvas,ctx,snap,view){
@@ -3265,8 +3274,6 @@ function renderQuickCanvas(canvas,ctx,snap,view){
       renderTileLayer(ctx,snap.matrices.items_matrix,w,h,"items",false,fakeTileSize);
     if(snap.matrices.units_matrix&&S.tileImgs.units)
       renderTileLayer(ctx,snap.matrices.units_matrix,w,h,"units",false,fakeTileSize);
-  }else if(view==="final"&&snap.matrices.height_map){
-    renderHeightMap(ctx,snap.matrices.height_map,w,h,fakeTileSize);
   }else if(snap.matrices.height_map){
     renderHeightMap(ctx,snap.matrices.height_map,w,h,fakeTileSize);
   }else if(snap.matrices.coastline_height_map){
@@ -3275,7 +3282,6 @@ function renderQuickCanvas(canvas,ctx,snap,view){
   // CC/Res dots
   if(snap.cc_positions?.length){
     // Use numbered boxes for quick canvas too
-    // renderCCBoxes now uses ts=1 internally; quick canvas uses fakeTileSize via renderCCOverlay
     renderCCOverlay(ctx, snap, w, h, fakeTileSize);
   }
   if(snap.resource_positions?.length) renderDots(ctx,snap.resource_positions,RES_COLOR,w,h,fakeTileSize);
@@ -3306,7 +3312,7 @@ async function animateQuickFrames(canvas,ctx,frames){
 let _pendingTmxB64=null;
 let _pendingSnap=null;
 
-async function showPreview(b64, snap, canvasEl){
+async function showPreview(b64, snap){
   _pendingTmxB64=b64; _pendingSnap=snap;
 
   // Show modal FIRST so canvas element exists in DOM

@@ -173,6 +173,21 @@ def _bridge_hints(m: dict) -> list:
     return hints
 
 
+def _tile_metrics_payload(metrics: dict, hints: list, idx: int) -> dict:
+    """Build serializable per-tile metrics payload."""
+    return {
+        "id": idx,
+        "mean_rgb": [round(float(v)) for v in metrics["mean_rgb"][idx]],
+        "h_sym": round(float(metrics["h_sym"][idx]), 3),
+        "v_sym": round(float(metrics["v_sym"][idx]), 3),
+        "d_sym": round(float(metrics["d_sym"][idx]), 3),
+        "variance": round(float(metrics["variance"][idx]), 2),
+        "top_alpha": round(float(metrics["top_alpha"][idx]), 2),
+        "bot_alpha": round(float(metrics["bot_alpha"][idx]), 2),
+        "bridge_hints": hints[idx],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -204,19 +219,7 @@ def analyze_sheet(png_b64: str, tilecount: int, columns: int,
     m     = _symmetry_metrics(tiles)
     hints = _bridge_hints(m)
 
-    result = []
-    for i in range(tilecount):
-        result.append({
-            "id":        i,
-            "mean_rgb":  [round(float(v)) for v in m["mean_rgb"][i]],
-            "h_sym":     round(float(m["h_sym"][i]),    3),
-            "v_sym":     round(float(m["v_sym"][i]),    3),
-            "d_sym":     round(float(m["d_sym"][i]),    3),
-            "variance":  round(float(m["variance"][i]), 2),
-            "top_alpha": round(float(m["top_alpha"][i]),2),
-            "bot_alpha": round(float(m["bot_alpha"][i]),2),
-            "bridge_hints": hints[i],
-        })
+    result = [_tile_metrics_payload(m, hints, i) for i in range(tilecount)]
 
     return {
         "tilecount": tilecount,

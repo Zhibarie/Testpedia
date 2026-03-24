@@ -55,29 +55,21 @@ def get_active_tiles(state: WizardState) -> tuple[dict, int]:
 
 # Coast-edge helpers --------------------------------------------------------
 
-def _first_water_col(hm, rows, c0, c1, h, w):
-    for c in range(c0, c1 + 1):
-        if any(0 <= r < h and 0 <= c < w and int(hm[r, c]) < 1 for r in rows):
-            return c
-    return None
-
-def _last_water_col(hm, rows, c0, c1, h, w):
-    for c in range(c1, c0 - 1, -1):
-        if any(0 <= r < h and 0 <= c < w and int(hm[r, c]) < 1 for r in rows):
-            return c
-    return None
-
-def _first_water_row(hm, cols, r0, r1, h, w):
-    for r in range(r0, r1 + 1):
-        if any(0 <= r < h and 0 <= c < w and int(hm[r, c]) < 1 for c in cols):
-            return r
-    return None
-
-def _last_water_row(hm, cols, r0, r1, h, w):
-    for r in range(r1, r0 - 1, -1):
-        if any(0 <= r < h and 0 <= c < w and int(hm[r, c]) < 1 for c in cols):
-            return r
-    return None
+def _scan_first_last_water(
+    hm, fixed: tuple[int, int], start: int, end: int, h: int, w: int, axis: str
+):
+    """Return first/last index containing water on the scan axis."""
+    if axis == "col":
+        is_water = lambda idx: any(
+            0 <= r < h and 0 <= idx < w and int(hm[r, idx]) < 1 for r in fixed
+        )
+    else:
+        is_water = lambda idx: any(
+            0 <= idx < h and 0 <= c < w and int(hm[idx, c]) < 1 for c in fixed
+        )
+    first = next((i for i in range(start, end + 1) if is_water(i)), None)
+    last = next((i for i in range(end, start - 1, -1) if is_water(i)), None)
+    return first, last
 
 
 # Main placement ------------------------------------------------------------
@@ -144,8 +136,7 @@ def place_stroke(state: WizardState, points: list,
 
         rows = (r_top, r_bot)
         if hm is not None:
-            wl = _first_water_col(hm, rows, c0, c1, h, w)
-            wr = _last_water_col (hm, rows, c0, c1, h, w)
+            wl, wr = _scan_first_last_water(hm, rows, c0, c1, h, w, axis="col")
             if wl is not None and wr is not None and wl <= wr:
                 sl = max(c0, wl - 1)   # endcap = 1 tile into land
                 sr = min(c1, wr + 1)
@@ -186,8 +177,7 @@ def place_stroke(state: WizardState, points: list,
 
         cols = (c_l, c_r)
         if hm is not None:
-            wt = _first_water_row(hm, cols, r0, r1, h, w)
-            wb = _last_water_row (hm, cols, r0, r1, h, w)
+            wt, wb = _scan_first_last_water(hm, cols, r0, r1, h, w, axis="row")
             if wt is not None and wb is not None and wt <= wb:
                 st = max(r0, wt - 1)
                 sb = min(r1, wb + 1)
@@ -225,5 +215,4 @@ def clear(state: WizardState) -> None:
 # ---------------------------------------------------------------------------
 # Position-based placement (custom layout with duplicate roles)
 # ---------------------------------------------------------------------------
-
 

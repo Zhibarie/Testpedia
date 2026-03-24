@@ -19,6 +19,7 @@ RESOURCE_PULL_TILES = {
     ( 0, -1): 11, ( 0, 0): 12, ( 0, 1): 13,
     ( 1, -1): 21, ( 1, 0): 22, ( 1, 1): 23,
 }
+VALID_MIRROR_MODES = {"none", "horizontal", "vertical", "diagonal1", "diagonal2", "both"}
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +106,7 @@ def generate_level(map_matrix, perlin_noise, level_type, level, min_perlin_value
 
 def mirror(matrix, mirroring):
     arr = np.asarray(matrix)
-    if mirroring not in ("none", "horizontal", "vertical", "diagonal1", "diagonal2", "both"):
+    if mirroring not in VALID_MIRROR_MODES:
         logger.warning("Mirroring option was defined incorrectly")
         return arr
 

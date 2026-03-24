@@ -4,7 +4,6 @@ registry_routes.py — Flask Blueprint for all /registry/* endpoints.
 Extracted from app.py to keep the main app file lean.
 Register with: app.register_blueprint(registry_bp)
 """
-import base64, io, json
 from flask import Blueprint, request, jsonify
 import bridge
 import tileset_registry as _reg
@@ -12,12 +11,21 @@ import tileset_registry as _reg
 registry_bp = Blueprint("registry", __name__)
 
 
+def _json_body() -> dict:
+    """Return request JSON body as dict (empty when missing/invalid)."""
+    return request.get_json(force=True, silent=True) or {}
+
+
+def _tile_dims(data: dict) -> tuple[int, int]:
+    """Parse tile size fields from a request payload."""
+    return int(data.get("tilewidth", 20)), int(data.get("tileheight", 20))
+
+
 # ── Inline helpers ────────────────────────────────────────────────────────────
 
 def _discover_tilesets_inline(tmx_xml: str) -> dict:
     """Parse TMX and return non-builtin tilesets with PNG previews."""
     import xml.etree.ElementTree as ET
-    import base64, re as _re
     BUILTIN = {"AutoLight","large-rock","export_items","50pCommandCenter"}
     try:
         root = ET.fromstring(tmx_xml)
@@ -86,12 +94,11 @@ def _get_autolight_reference_inline() -> dict:
 
 @registry_bp.route("/registry/suggest-terrain", methods=["POST"])
 def registry_suggest_terrain():
-    data   = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     png_b64 = data.get("png", "")
     tilecount = int(data.get("tilecount", 0))
     columns   = int(data.get("columns", 1))
-    tilewidth  = int(data.get("tilewidth",  20))
-    tileheight = int(data.get("tileheight", 20))
+    tilewidth, tileheight = _tile_dims(data)
     if not png_b64 or not tilecount:
         return jsonify({"error": "Missing png or tilecount"}), 400
     try:
@@ -105,7 +112,7 @@ def registry_suggest_terrain():
 
 @registry_bp.route("/registry/preview-terrain", methods=["POST"])
 def registry_preview_terrain():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     try:
         import tile_analyzer as _ta
         result = _ta.build_terrain_preview(
@@ -132,14 +139,13 @@ def registry_preview_terrain_example():
 @registry_bp.route("/registry/analyze", methods=["POST"])
 def registry_analyze():
     """Analyze a tileset PNG — return per-tile color metrics + bridge hints."""
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     try:
         import tile_analyzer as _ta
         png       = data.get("png", "")
         tilecount = int(data.get("tilecount", 0))
         columns   = int(data.get("columns", 1))
-        tilewidth  = int(data.get("tilewidth",  20))
-        tileheight = int(data.get("tileheight", 20))
+        tilewidth, tileheight = _tile_dims(data)
         if not png or not tilecount:
             return jsonify({"error": "png and tilecount required"}), 400
         tiles = _ta.analyze_sheet(png, tilecount, columns, tilewidth, tileheight).get("tiles", [])
@@ -152,14 +158,13 @@ def registry_analyze():
 @registry_bp.route("/registry/tiles", methods=["POST"])
 def registry_tiles():
     """Extract individual tile PNGs (base64) from a tileset sheet."""
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     try:
         import tile_analyzer as _ta
         png       = data.get("png", "")
         tilecount = int(data.get("tilecount", 0))
         columns   = int(data.get("columns", 1))
-        tilewidth  = int(data.get("tilewidth",  20))
-        tileheight = int(data.get("tileheight", 20))
+        tilewidth, tileheight = _tile_dims(data)
         if not png or not tilecount:
             return jsonify({"error": "png and tilecount required"}), 400
         tiles_b64 = _ta.extract_tiles_b64(png, tilecount, columns, tilewidth, tileheight)
@@ -187,7 +192,7 @@ def registry_discover():
             f   = request.files.get("file")
             xml = f.read().decode("utf-8") if f else ""
         else:
-            xml = (request.get_json(force=True, silent=True) or {}).get("tmx_xml", "")
+            xml = _json_body().get("tmx_xml", "")
         if not xml:
             return jsonify({"error": "No TMX provided"}), 400
         result = _discover_tilesets_inline(xml)
@@ -200,7 +205,7 @@ def registry_discover():
 
 @registry_bp.route("/registry/activate", methods=["POST"])
 def registry_activate():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     try:
         result = bridge.rpc_call("activate_tileset", data)
         return jsonify(result)
@@ -210,7 +215,7 @@ def registry_activate():
 
 @registry_bp.route("/registry/deactivate", methods=["POST"])
 def registry_deactivate():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     try:
         result = bridge.rpc_call("deactivate_tileset", data)
         return jsonify(result)
@@ -222,7 +227,7 @@ def registry_deactivate():
 
 @registry_bp.route("/registry/register", methods=["POST"])
 def registry_register():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     try:
         result = bridge.rpc_call("register_tileset", {**data, "activate": True})
         return jsonify(result)
@@ -233,7 +238,7 @@ def registry_register():
 @registry_bp.route("/registry/import", methods=["POST"])
 def registry_import():
     """Bulk-import tilesets from a registry JSON export."""
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     tilesets = data.get("tilesets", {})
     if not tilesets:
         return jsonify({"error": "No tilesets in payload"}), 400

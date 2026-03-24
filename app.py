@@ -20,6 +20,11 @@ app.register_blueprint(registry_bp)
 
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
 
+
+def _json_body() -> dict:
+    """Return request JSON payload as dict, defaulting to empty object."""
+    return request.get_json(force=True, silent=True) or {}
+
 # ── Undo / Redo stacks (in-process, per session) ──────────────
 _brush_undo:   list = []
 _brush_redo:   list = []
@@ -117,7 +122,7 @@ def rpc(method):
     global _brush_undo, _brush_redo, _polygon_undo, _polygon_redo, _polygons
     global _bridge_undo, _bridge_redo
     try:
-        params = request.get_json(force=True, silent=True) or {}
+        params = _json_body()
 
         # ── Wall brush ────────────────────────────────────────
         if method == "draw_brush_walls":
@@ -250,47 +255,23 @@ def rpc(method):
 
 @app.route("/extract_seed", methods=["POST"])
 def extract_seed():
-    import gzip as gz_mod, struct
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     tmx_text = data.get("tmx_text", "")
     grid_size = int(data.get("grid_size", 5))
     if not tmx_text:
         return jsonify({"error": "No tmx_text"}), 400
     try:
-        tree = ET.fromstring(tmx_text)
-    except Exception as e:
-        return jsonify({"error": f"Invalid XML: {e}"}), 400
+        tree = _parse_tmx_root(tmx_text)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     map_w = int(tree.get("width", 160)); map_h = int(tree.get("height", 160))
-    water_gids = set()
-    ts_firsts = sorted(int(t.get("firstgid", 0)) for t in tree.findall("tileset"))
-    for ts_el in tree.findall("tileset"):
-        fg = int(ts_el.get("firstgid", 0))
-        ts_name = (ts_el.get("name") or "").lower()
-        if "deep water" in ts_name or ts_name == "shallow water":
-            nxt = next((g for g in ts_firsts if g > fg), fg + 100)
-            for g in range(fg, nxt): water_gids.add(g)
-        for tile_el in ts_el.findall("tile"):
-            tid = int(tile_el.get("id", 0))
-            for prop in tile_el.findall(".//property"):
-                if prop.get("name") == "water": water_gids.add(fg + tid)
+    water_gids = _collect_water_gids(tree)
     use_prop = len(water_gids) > 0
-    tiles = None
-    for layer in tree.findall("layer"):
-        if layer.get("name") == "Ground":
-            data_el = layer.find("data")
-            if data_el is None: continue
-            raw = (data_el.text or "").strip().replace("\n","").replace(" ","")
-            raw += "=" * (-len(raw) % 4)
-            try:
-                compressed = base64.b64decode(raw)
-                if compressed[:2] == b'\x1f\x8b': decoded = gz_mod.decompress(compressed)
-                else:
-                    import zlib; decoded = zlib.decompress(compressed)
-                tiles = struct.unpack_from(f"<{map_w*map_h}I", decoded)
-            except Exception as e:
-                return jsonify({"error": f"Decode failed: {e}"}), 400
-            break
-    if tiles is None: return jsonify({"error": "No Ground layer found"}), 400
+    try:
+        tiles = _decode_layer_gids(tree, "Ground", map_w, map_h)
+    except ValueError as exc:
+        msg = str(exc).replace("Ground decode failed", "Decode failed")
+        return jsonify({"error": msg}), 400
     cell_h = map_h // grid_size; cell_w = map_w // grid_size
     grid = []
     for gr in range(grid_size):
@@ -309,68 +290,28 @@ def extract_seed():
 
 @app.route("/import_map", methods=["POST"])
 def import_map():
-    import gzip as gz_mod, struct
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     tmx_text = data.get("tmx_text", "")
-    if not tmx_text: return jsonify({"error": "No tmx_text provided"}), 400
-    try: tree = ET.fromstring(tmx_text)
-    except Exception as e: return jsonify({"error": f"Invalid XML: {e}"}), 400
+    try:
+        tree = _parse_tmx_root(tmx_text)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     map_w = int(tree.get("width", 160)); map_h = int(tree.get("height", 160))
     TILE_ID_OFFSET = 201
-    water_gids = set()
-    ts_firsts = sorted(int(t.get("firstgid",0)) for t in tree.findall("tileset"))
-    for ts_el in tree.findall("tileset"):
-        fg = int(ts_el.get("firstgid",0))
-        ts_name = (ts_el.get("name") or "").lower()
-        if "deep water" in ts_name or ts_name == "shallow water":
-            nxt = next((g for g in ts_firsts if g > fg), fg+100)
-            for g in range(fg, nxt): water_gids.add(g)
-        for tile_el in ts_el.findall("tile"):
-            tid = int(tile_el.get("id",0))
-            for prop in tile_el.findall(".//property"):
-                if prop.get("name")=="water": water_gids.add(fg+tid)
+    water_gids = _collect_water_gids(tree)
     use_prop = len(water_gids) > 0
-    height_map = None
-    for layer in tree.findall("layer"):
-        if layer.get("name") == "Ground":
-            data_el = layer.find("data")
-            if data_el is None: continue
-            raw = (data_el.text or "").strip().replace("\n","").replace(" ","")
-            raw += "=" * (-len(raw) % 4)
-            try:
-                compressed = base64.b64decode(raw)
-                if compressed[:2] == b'\x1f\x8b': decoded = gz_mod.decompress(compressed)
-                else:
-                    import zlib; decoded = zlib.decompress(compressed)
-                tiles = struct.unpack_from(f"<{map_w*map_h}I", decoded)
-                hm = []
-                for r in range(map_h):
-                    row = []
-                    for c in range(map_w):
-                        gid = tiles[r*map_w+c]
-                        row.append(0 if (gid in water_gids if use_prop else (gid-TILE_ID_OFFSET)<31) else 1)
-                    hm.append(row)
-                height_map = hm
-            except Exception as e:
-                return jsonify({"error": f"Ground decode failed: {e}"}), 400
-            break
-    if height_map is None: return jsonify({"error": "No Ground layer found"}), 400
-    name_map = {"AutoLight":"ground","large-rock":"wall","export_items":"items","50pCommandCenter":"units"}
-    tilesets_out = {}
-    for ts_elem in tree.findall("tileset"):
-        key = name_map.get(ts_elem.get("name",""))
-        if not key: continue
-        for prop in ts_elem.findall(".//property"):
-            if prop.get("name") == "embedded_png":
-                tilesets_out[key] = {
-                    "name": ts_elem.get("name"),
-                    "firstGid": int(ts_elem.get("firstgid",1)),
-                    "columns": int(ts_elem.get("columns",1)),
-                    "tileCount": int(ts_elem.get("tilecount",0)),
-                    "tileWidth": int(ts_elem.get("tilewidth",20)),
-                    "tileHeight": int(ts_elem.get("tileheight",20)),
-                    "png": "".join((prop.get("value") or prop.text or "").split()),
-                }; break
+    try:
+        tiles = _decode_layer_gids(tree, "Ground", map_w, map_h)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    height_map = [
+        [
+            0 if (gid in water_gids if use_prop else (gid - TILE_ID_OFFSET) < 31) else 1
+            for gid in tiles[r * map_w:(r + 1) * map_w]
+        ]
+        for r in range(map_h)
+    ]
+    tilesets_out = _extract_embedded_tilesets(tree)
     target_h = max(40, min(2000, int(data.get("target_h", map_h))))
     target_w = max(40, min(2000, int(data.get("target_w", map_w))))
     height_map = np.array(height_map, dtype=np.int32)
@@ -403,7 +344,7 @@ def import_map():
 @app.route("/download", methods=["POST"])
 def download():
     import zipfile, io as _io
-    data      = request.get_json(force=True, silent=True) or {}
+    data = _json_body()
     tmx_b64   = data.get("tmx_bytes", "")
     png_b64   = data.get("png_bytes", "")
     base_name = data.get("filename", "generated_map").removesuffix(".tmx")
@@ -442,6 +383,80 @@ def _push_undo(stack, clear_stack, value, max_depth=50):
     stack.append(value)
     if len(stack) > max_depth: stack.pop(0)
     if clear_stack is not None: clear_stack.clear()
+
+def _parse_tmx_root(tmx_text: str):
+    if not tmx_text:
+        raise ValueError("No tmx_text provided")
+    try:
+        return ET.fromstring(tmx_text)
+    except Exception as exc:
+        raise ValueError(f"Invalid XML: {exc}") from exc
+
+def _collect_water_gids(root):
+    water_gids = set()
+    ts_firsts = sorted(int(t.get("firstgid", 0)) for t in root.findall("tileset"))
+    for ts_el in root.findall("tileset"):
+        first_gid = int(ts_el.get("firstgid", 0))
+        ts_name = (ts_el.get("name") or "").lower()
+        if "deep water" in ts_name or ts_name == "shallow water":
+            nxt = next((g for g in ts_firsts if g > first_gid), first_gid + 100)
+            water_gids.update(range(first_gid, nxt))
+        for tile_el in ts_el.findall("tile"):
+            tile_id = int(tile_el.get("id", 0))
+            for prop in tile_el.findall(".//property"):
+                if prop.get("name") == "water":
+                    water_gids.add(first_gid + tile_id)
+    return water_gids
+
+def _decode_layer_gids(root, layer_name: str, map_w: int, map_h: int):
+    import gzip as gz_mod
+    import struct
+    import zlib
+    for layer in root.findall("layer"):
+        if layer.get("name") != layer_name:
+            continue
+        data_el = layer.find("data")
+        if data_el is None:
+            continue
+        raw = (data_el.text or "").strip().replace("\n", "").replace(" ", "")
+        raw += "=" * (-len(raw) % 4)
+        try:
+            compressed = base64.b64decode(raw)
+            if compressed[:2] == b"\x1f\x8b":
+                decoded = gz_mod.decompress(compressed)
+            else:
+                decoded = zlib.decompress(compressed)
+            return struct.unpack_from(f"<{map_w * map_h}I", decoded)
+        except Exception as exc:
+            raise ValueError(f"{layer_name} decode failed: {exc}") from exc
+    raise ValueError(f"No {layer_name} layer found")
+
+def _extract_embedded_tilesets(root):
+    name_map = {
+        "AutoLight": "ground",
+        "large-rock": "wall",
+        "export_items": "items",
+        "50pCommandCenter": "units",
+    }
+    tilesets_out = {}
+    for ts_elem in root.findall("tileset"):
+        key = name_map.get(ts_elem.get("name", ""))
+        if not key:
+            continue
+        for prop in ts_elem.findall(".//property"):
+            if prop.get("name") != "embedded_png":
+                continue
+            tilesets_out[key] = {
+                "name": ts_elem.get("name"),
+                "firstGid": int(ts_elem.get("firstgid", 1)),
+                "columns": int(ts_elem.get("columns", 1)),
+                "tileCount": int(ts_elem.get("tilecount", 0)),
+                "tileWidth": int(ts_elem.get("tilewidth", 20)),
+                "tileHeight": int(ts_elem.get("tileheight", 20)),
+                "png": "".join((prop.get("value") or prop.text or "").split()),
+            }
+            break
+    return tilesets_out
 
 def _embed_slot_tilesets(tmx_bytes: bytes, custom: dict) -> bytes:
     SLOT_TO_NAME = {"ground":"AutoLight","wall":"large-rock",

@@ -1,19 +1,13 @@
-import gzip
-import base64
 import logging
-import random
 import os
 import sys
+import random
+import base64
+import gzip
 
 import numpy as np
 import xml.etree.ElementTree as ET
 from scipy.ndimage import distance_transform_cdt, label as _label_segments
-
-
-def resource_path(relative_path):
-    """Resolve path to bundled data file (PyInstaller-compatible)."""
-    base = getattr(sys, '_MEIPASS', os.path.abspath('.'))
-    return os.path.join(base, relative_path)
 
 from wizard_state import WizardState, WizardStep
 from procedural_map_generator_functions import (
@@ -34,6 +28,12 @@ from procedural_map_generator_functions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def resource_path(relative_path):
+    """Resolve path to bundled data file (PyInstaller-compatible)."""
+    base = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    return os.path.join(base, relative_path)
 
 # AutoLight tileset firstgid = 201 in Tiled TMX (1-based GID, tileset starts at index 1).
 # All ground tile local IDs are stored as (gid - TILE_ID_OFFSET) internally, then offset
