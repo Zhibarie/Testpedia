@@ -215,6 +215,13 @@ def _coast_row(hm, cols, r0, r1, h, w, top2bot=True):
     return None
 
 
+def _active_bridge_tileset(state) -> dict | None:
+    """Get active bridge tileset entry from runtime state."""
+    bts = getattr(state, "bridge_tilesets", {})
+    active = getattr(state, "active_bridge_name", "")
+    return bts.get(active) or next(iter(bts.values()), None)
+
+
 # ── Placement ─────────────────────────────────────────────────────────────────
 
 def place(state, points: list, layout: BridgeLayout,
@@ -230,9 +237,7 @@ def place(state, points: list, layout: BridgeLayout,
     if not points:
         return
 
-    bts      = getattr(state, "bridge_tilesets", {})
-    active   = getattr(state, "active_bridge_name", "")
-    ts       = bts.get(active) or next(iter(bts.values()), None)
+    ts = _active_bridge_tileset(state)
     firstgid = int(ts.get("firstgid", 1)) if ts else 1
 
     h, w = int(state.height), int(state.width)

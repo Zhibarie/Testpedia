@@ -94,6 +94,28 @@ def _next_firstgid(registry: dict, tilecount: int) -> int:
     return candidate
 
 
+def _apply_bridge_fields(
+    entry: dict,
+    bridge_variant: str,
+    bridge_custom_dir: str,
+    bridge_layout: list | None,
+    layout_rows: int | None,
+    layout_cols: int | None,
+    bridge_simple: dict | None,
+) -> None:
+    """Mutate a registry entry with optional bridge-specific metadata."""
+    entry["bridge_variant"] = bridge_variant
+    entry["bridge_custom_dir"] = bridge_custom_dir
+    if bridge_layout is not None:
+        entry["bridge_layout"] = bridge_layout
+    if layout_rows is not None:
+        entry["layout_rows"] = layout_rows
+    if layout_cols is not None:
+        entry["layout_cols"] = layout_cols
+    if bridge_simple is not None:
+        entry["bridge_simple"] = bridge_simple
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -143,16 +165,10 @@ def register_tileset(
             if tiles is not None:
                 entry["tiles"] = tiles
             if tileset_type == "bridge":
-                entry["bridge_variant"]    = bridge_variant
-                entry["bridge_custom_dir"] = bridge_custom_dir
-                if bridge_layout is not None:
-                    entry["bridge_layout"] = bridge_layout
-                if layout_rows is not None:
-                    entry["layout_rows"] = layout_rows
-                if layout_cols is not None:
-                    entry["layout_cols"] = layout_cols
-                if bridge_simple is not None:
-                    entry["bridge_simple"] = bridge_simple
+                _apply_bridge_fields(
+                    entry, bridge_variant, bridge_custom_dir,
+                    bridge_layout, layout_rows, layout_cols, bridge_simple
+                )
         else:
             fg = _next_firstgid(registry, tilecount)
             if _is_reserved(fg, tilecount):
@@ -170,16 +186,10 @@ def register_tileset(
             if tiles is not None:
                 entry["tiles"] = tiles
             if tileset_type == "bridge":
-                entry["bridge_variant"]    = bridge_variant
-                entry["bridge_custom_dir"] = bridge_custom_dir
-                if bridge_layout is not None:
-                    entry["bridge_layout"] = bridge_layout
-                if layout_rows is not None:
-                    entry["layout_rows"] = layout_rows
-                if layout_cols is not None:
-                    entry["layout_cols"] = layout_cols
-                if bridge_simple is not None:
-                    entry["bridge_simple"] = bridge_simple
+                _apply_bridge_fields(
+                    entry, bridge_variant, bridge_custom_dir,
+                    bridge_layout, layout_rows, layout_cols, bridge_simple
+                )
             registry[name] = entry
 
         _save(registry)

@@ -4,16 +4,24 @@ from typing import Optional, List, Tuple, Any
 import numpy as np
 
 class WizardStep(IntEnum):
-    COASTLINE = 0; HILLS = 1; HEIGHT_OCEAN = 2
-    COMMAND_CENTERS = 3; RESOURCES = 4; FINALIZE = 5
+    COASTLINE = 0
+    HILLS = 1
+    HEIGHT_OCEAN = 2
+    COMMAND_CENTERS = 3
+    RESOURCES = 4
+    FINALIZE = 5
 
 @dataclass
 class WizardState:
     initial_matrix: Optional[list] = None
-    height: int = 160; width: int = 160
-    mirroring: str = "vertical"; pattern: int = 1
-    num_height_levels: int = 7; num_ocean_levels: int = 3
-    num_command_centers: int = 4; num_resource_pulls: int = 12
+    height: int = 160
+    width: int = 160
+    mirroring: str = "vertical"
+    pattern: int = 1
+    num_height_levels: int = 7
+    num_ocean_levels: int = 3
+    num_command_centers: int = 4
+    num_resource_pulls: int = 12
     output_path: str = ""
     randomized_matrix: Optional[np.ndarray] = field(default=None, repr=False)
     coastline_height_map: Optional[np.ndarray] = field(default=None, repr=False)

@@ -8,24 +8,29 @@ from procedural_map_generator_functions import _get_mirrored_positions
 state = WizardState()
 
 
+def _registry_entry_to_state_tileset(entry: dict) -> dict:
+    """Normalize registry payload into the runtime tileset shape."""
+    return {
+        "name": entry["name"],
+        "firstgid": entry["firstgid"],
+        "tilecount": entry["tilecount"],
+        "columns": entry["columns"],
+        "tilewidth": entry.get("tilewidth", 20),
+        "tileheight": entry.get("tileheight", 20),
+        "png": entry.get("png", ""),
+        "tiles": entry.get("tiles", {}),
+        "bridge_variant": entry.get("bridge_variant", "12"),
+        "bridge_custom_dir": entry.get("bridge_custom_dir", ""),
+        "bridge_simple": entry.get("bridge_simple"),
+    }
+
+
 def _restore_state_from_registry():
     """Reload all active tilesets from registry into live state on startup."""
     all_ts = _reg.get_all()
     for name, entry in all_ts.items():
         ts_type = entry.get("type", "")
-        ts_info = {
-            "name":           entry["name"],
-            "firstgid":       entry["firstgid"],
-            "tilecount":      entry["tilecount"],
-            "columns":        entry["columns"],
-            "tilewidth":      entry.get("tilewidth",  20),
-            "tileheight":     entry.get("tileheight", 20),
-            "png":            entry.get("png", ""),
-            "tiles":          entry.get("tiles", {}),
-            "bridge_variant": entry.get("bridge_variant", "12"),
-            "bridge_custom_dir": entry.get("bridge_custom_dir", ""),
-            "bridge_simple":     entry.get("bridge_simple"),
-        }
+        ts_info = _registry_entry_to_state_tileset(entry)
         if ts_type == "bridge":
             state.bridge_tilesets[name] = ts_info
             if not state.active_bridge_name:
@@ -41,6 +46,19 @@ def _matrix_payload(matrix):
     import numpy as _np
     arr = _np.asarray(matrix)
     return {"shape": list(arr.shape), "data": arr.astype(int).ravel().tolist()}
+
+
+def _preview_frame(label: str, matrix) -> dict:
+    """Serialize preview matrix payload with strict 2D shape validation."""
+    import numpy as _np
+    arr = _np.asarray(matrix)
+    if arr.ndim != 2:
+        raise ValueError(f"Preview frame '{label}' must be 2D, got shape {list(arr.shape)}")
+    return {
+        "label": label,
+        "shape": [int(arr.shape[0]), int(arr.shape[1])],
+        "data": arr.astype(int).ravel().tolist(),
+    }
 
 
 def _snapshot() -> Dict[str, Any]:
@@ -77,9 +95,14 @@ def _snapshot() -> Dict[str, Any]:
 
 
 def _params(p):
-    if p is None: return {}
-    if isinstance(p, dict): return p
-    return json.loads(p or "{}")
+    if p is None:
+        return {}
+    if isinstance(p, dict):
+        return p
+    try:
+        return json.loads(p or "{}")
+    except Exception as exc:
+        raise ValueError(f"Invalid JSON params: {exc}") from exc
 
 
 def _apply_state_params(state, params):
@@ -367,13 +390,15 @@ def list_active_tiles(params_json="{}"):
 def run_coastline(params_json="{}"):
     params = _params(params_json)
     state.initial_matrix = params.get("grid", state.initial_matrix)
+    if state.initial_matrix is None:
+        raise ValueError("Missing 'grid' for run_coastline")
     _apply_state_params(state, params)
     state._smoothness = float(params.get("shoreline_smoothness", 0.0))
     state.invalidate_from(WizardStep.COASTLINE)
     state.coast_smooth_passes = int(params.get("coastSmoothPasses", params.get("coast_smooth_passes", getattr(state, "coast_smooth_passes", 1))))
     frames = []
     def cb(label, matrix):
-        frames.append({"label": label, "shape": [len(matrix), len(matrix[0])], "data": [int(matrix[r][c]) for r in range(len(matrix)) for c in range(len(matrix[0]))]})
+        frames.append(_preview_frame(label, matrix))
     map_pipeline.run_coastline(state, preview_cb=cb)
     return {"snapshot": _snapshot(), "frames": frames}
 
@@ -507,15 +532,20 @@ def quick_generate(params_json="{}"):
     params = _params(params_json)
     state = WizardState()
     state.initial_matrix = params.get("grid", state.initial_matrix)
+    if state.initial_matrix is None:
+        raise ValueError("Missing 'grid' for quick_generate")
     _apply_state_params(state, params)
     bxml = params.get("blueprintXml") or params.get("blueprint_xml")
     if not bxml: raise ValueError("Missing blueprintXml")
     qf = []
     def _fr(label, hm, idm=None, im=None, um=None):
         f = {"label": label, "height_map": _matrix_payload(hm)}
-        if idm: f["id_matrix"]    = _matrix_payload(idm)
-        if im:  f["items_matrix"] = _matrix_payload(im)
-        if um:  f["units_matrix"] = _matrix_payload(um)
+        if idm is not None:
+            f["id_matrix"] = _matrix_payload(idm)
+        if im is not None:
+            f["items_matrix"] = _matrix_payload(im)
+        if um is not None:
+            f["units_matrix"] = _matrix_payload(um)
         qf.append(f)
     def ccb(label, matrix): _fr(label, matrix)
     map_pipeline.run_coastline(state, preview_cb=ccb)
