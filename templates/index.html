@@ -320,6 +320,7 @@ header::after {
   display: grid;
   grid-template-columns: repeat(5,1fr);
   gap: 5px;
+  max-width: 360px;
 }
 .seed-cell {
   aspect-ratio: 1;
@@ -331,14 +332,51 @@ header::after {
   touch-action: manipulation;
   transition: background .1s, border-color .1s;
 }
-#seed-grid {
-  display: grid;
-  grid-template-columns: repeat(5,1fr);
-  gap: 5px;
-  max-width: 360px;
-}
 .seed-cell.on  { background: var(--hi); border-color: var(--hi); }
 .seed-cell.off { background: var(--ink); }
+
+.wizard-page {
+  display:flex;
+  flex-direction:column;
+  flex:1;
+  overflow:hidden;
+}
+.seed-resize-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.inline-group { display:flex; align-items:center; gap:5px; }
+.icon-btn {
+  width:32px;
+  height:32px;
+  border-radius:6px;
+  border:1px solid var(--line);
+  background:var(--ink3);
+  color:var(--body);
+  cursor:pointer;
+  font-size:1rem;
+}
+.seed-size-input {
+  width:54px;
+  text-align:center;
+  background:var(--ink);
+  border:1px solid var(--hi);
+  border-radius:6px;
+  color:var(--hi);
+  font-weight:700;
+  font-size:.85rem;
+  font-family:'IBM Plex Mono',monospace;
+  padding:5px 6px;
+  min-height:36px;
+}
+.muted-note {
+  color:var(--dim);
+  font-size:.72rem;
+  font-family:'IBM Plex Mono',monospace;
+}
 
 /* ── FORM ── */
 .ctrl-grid {
@@ -543,6 +581,19 @@ footer .btn { flex: 1; min-height: 44px; }
   flex-shrink: 0;
 }
 #quick-canvas { display: block; image-rendering: pixelated; max-width: 100%; }
+#quick-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 5px;
+  z-index: 12;
+  padding: 5px;
+  border-radius: 10px;
+  border: 1px solid rgba(38,55,84,.7);
+  background: rgba(8,13,24,.45);
+  backdrop-filter: blur(6px);
+}
 #quick-controls {
   flex: 1;
   overflow-y: auto;
@@ -985,7 +1036,7 @@ footer .btn { flex: 1; min-height: 44px; }
 </header>
 
 <!-- ══ WIZARD MODE ══ -->
-<div id="wizard-page" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+<div id="wizard-page" class="wizard-page">
 
   <!-- Step bar -->
   <nav id="step-bar">
@@ -1024,25 +1075,16 @@ footer .btn { flex: 1; min-height: 44px; }
         <div class="section-label">Preset</div>
         <div class="preset-grid" id="preset-grid"></div>
 
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <div class="seed-resize-row">
           <span class="section-label">Seed Grid</span>
-          <div style="display:flex;align-items:center;gap:5px">
-            <button onclick="resizeSeedGrid(S.gridSize-1)"
-              style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
-                     background:var(--ink3);color:var(--body);cursor:pointer;font-size:1rem">−</button>
+          <div class="inline-group">
+            <button onclick="resizeSeedGrid(S.gridSize-1)" class="icon-btn">−</button>
             <input id="grid-size-input" type="number" value="5" min="2"
-              style="width:54px;text-align:center;background:var(--ink);
-                     border:1px solid var(--hi);border-radius:6px;
-                     color:var(--hi);font-weight:700;font-size:.85rem;
-                     font-family:'IBM Plex Mono',monospace;padding:5px 6px;min-height:36px"
+              class="seed-size-input"
               onchange="resizeSeedGrid(parseInt(this.value)||5)"
               onkeydown="if(event.key==='Enter'){resizeSeedGrid(parseInt(this.value)||5);this.blur();}">
-            <button onclick="resizeSeedGrid(S.gridSize+1)"
-              style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
-                     background:var(--ink3);color:var(--body);cursor:pointer;font-size:1rem">+</button>
-            <span style="color:var(--dim);font-size:.72rem;font-family:'IBM Plex Mono',monospace">
-              ×<span id="grid-size-label">5</span>
-            </span>
+            <button onclick="resizeSeedGrid(S.gridSize+1)" class="icon-btn">+</button>
+            <span class="muted-note">×<span id="grid-size-label">5</span></span>
           </div>
         </div>
         <div id="seed-grid"></div>
@@ -1439,6 +1481,11 @@ footer .btn { flex: 1; min-height: 44px; }
 <!-- ══ QUICK MODE ══ -->
 <div id="quick-page">
   <div id="quick-canvas-wrap">
+    <div id="quick-toolbar">
+      <button class="ctool-btn" onclick="zoomQuick(1.25)" title="Quick Zoom In">+</button>
+      <button class="ctool-btn" onclick="zoomQuick(1/1.25)" title="Quick Zoom Out">−</button>
+      <button class="ctool-btn" onclick="zoomQuickReset()" title="Quick Fit">⊙</button>
+    </div>
     <canvas id="quick-canvas"></canvas>
   </div>
   <div id="quick-controls">
@@ -1449,12 +1496,12 @@ footer .btn { flex: 1; min-height: 44px; }
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
         <span class="section-label">Seed</span>
         <div style="display:flex;gap:5px">
-          <button onclick="resizeQSeedGrid(S.qGridSize-1)"
+          <button onclick="resizeQSeedGrid((S.qGridSize||5)-1)"
             style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
                    background:var(--ink3);color:var(--body);cursor:pointer">−</button>
           <span style="font-size:.72rem;color:var(--dim);align-self:center;
                  font-family:'IBM Plex Mono',monospace">×<span id="q-seed-label" style="display:none"></span></span>
-          <button onclick="resizeQSeedGrid(S.qGridSize+1)"
+          <button onclick="resizeQSeedGrid((S.qGridSize||5)+1)"
             style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
                    background:var(--ink3);color:var(--body);cursor:pointer">+</button>
         </div>
@@ -1535,7 +1582,7 @@ footer .btn { flex: 1; min-height: 44px; }
       <button class="modal-close" onclick="closeImport()">✕</button>
     </div>
     <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
-      <input type="file" id="file-input" accept=".tmx,text/xml,application/xml" style="display:none">
+      <input type="file" id="file-input" accept=".tmx,text/xml,application/xml" style="display:none" onchange="handleFileInput(event)">
       <div class="drop-icon">📁</div>
       <div class="drop-text">Tap untuk pilih file .tmx</div>
       <div class="drop-file" id="drop-file" style="display:none"></div>
@@ -1625,6 +1672,7 @@ const S = {
   bridgeImg:null, bridgeTilesetInfo:null,
   bridgeImgs:{}, bridgeTsInfos:{}, activeBridge:"",
   zoomScale:1, panX:0, panY:0,
+  qGridSize:5, qZoomScale:1,
   animTimer:null, animFrames:[], animIdx:0,
   quickTmx:null,
   placeMode:"unit",   // "unit" | "item"  — active sub-mode for step 5
@@ -3002,6 +3050,22 @@ function applyMirroringToGrid(grid, mode){
   return g;
 }
 
+function scaleSeedGridToSize(grid, newSize){
+  const src = Array.isArray(grid) ? grid : [];
+  const old = Math.max(1, src.length || 1);
+  const out = [];
+  for(let r=0;r<newSize;r++){
+    const row=[];
+    for(let c=0;c<newSize;c++){
+      const sr=Math.min(old-1, Math.floor(r*old/newSize));
+      const sc=Math.min(old-1, Math.floor(c*old/newSize));
+      row.push(src[sr]?.[sc] ? 1 : 0);
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 function buildSeedGrid(){
   const n=S.gridSize;
   const wrap=$("seed-grid"); if(!wrap) return;
@@ -3028,31 +3092,23 @@ function buildSeedGrid(){
 }
 
 function resizeQSeedGrid(delta){
-  // Quick mode seed grid resize — mirrors resizeSeedGrid behaviour
-  S.qGridSize = Math.max(2, Math.min(9, (S.qGridSize||5) + delta));
+  // Quick mode seed grid resize (absolute new size)
+  const next = Math.max(2, Math.min(9, parseInt(delta)||5));
+  S.qGridSize = next;
+  QG.grid = scaleSeedGridToSize(QG.grid, next);
+  const mode=document.getElementById("q-mir")?.value||"none";
+  QG.grid = applyMirroringToGrid(QG.grid, mode);
   const lbl = $("q-seed-label");
   if(lbl){ lbl.textContent = S.qGridSize; lbl.style.display = ""; }
   buildQSeedGrid();
+  toast(`Quick grid ${next}×${next}`);
 }
 function resizeSeedGrid(newSize){
-  newSize=Math.max(2,parseInt(newSize)||5);
-  const old=S.gridSize;
+  newSize=Math.max(2,Math.min(9, parseInt(newSize)||5));
   S.gridSize=newSize;
   const inp=$("grid-size-input"); if(inp) inp.value=newSize;
   const lbl=$("grid-size-label"); if(lbl) lbl.textContent=newSize;
-  // Preserve existing values, expand/shrink grid
-  const newGrid=[];
-  for(let r=0;r<newSize;r++){
-    const row=[];
-    for(let c=0;c<newSize;c++){
-      // Scale old grid proportionally
-      const sr=Math.floor(r*old/newSize);
-      const sc=Math.floor(c*old/newSize);
-      row.push(S.grid[sr]?.[sc]||0);
-    }
-    newGrid.push(row);
-  }
-  S.grid=newGrid;
+  S.grid=scaleSeedGridToSize(S.grid, newSize);
   // Re-apply mirroring
   const mode=document.getElementById("c-mir")?.value||"none";
   S.grid=applyMirroringToGrid(S.grid,mode);
@@ -3062,13 +3118,15 @@ function resizeSeedGrid(newSize){
 
 function buildPresets(){
   const wrap=$("preset-grid"); if(!wrap) return;
+  wrap.innerHTML="";
   PRESETS.forEach(p=>{
     const btn=document.createElement("button");
     btn.className="preset-btn";
     btn.innerHTML=`<span class="pe">${p.e}</span><span class="pn">${p.label}</span>`;
     btn.onclick=()=>{
       const mode=document.getElementById("c-mir")?.value||"none";
-      S.grid=applyMirroringToGrid(p.g.map(r=>[...r]),mode);
+      const n=S.gridSize||5;
+      S.grid=applyMirroringToGrid(scaleSeedGridToSize(p.g,n),mode);
       buildSeedGrid(); toast("Preset: "+p.label);
     };
     wrap.appendChild(btn);
@@ -3084,32 +3142,42 @@ const QG = {
 
 function buildQSeedGrid(){
   const wrap=$("q-seed-grid"); if(!wrap) return;
+  const n=S.qGridSize || (QG.grid?.length || 5);
+  S.qGridSize=n;
+  QG.grid=scaleSeedGridToSize(QG.grid,n);
   wrap.innerHTML="";
-  for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+  wrap.style.gridTemplateColumns=`repeat(${n},1fr)`;
+  const cellMin=Math.max(28, Math.min(52, Math.floor(280/n)));
+  for(let r=0;r<n;r++) for(let c=0;c<n;c++){
     const btn=document.createElement("button");
-    btn.className="seed-cell "+(QG.grid[r][c]?"on":"off");
-    btn.style.minHeight="38px";
+    btn.className="seed-cell "+(QG.grid[r]?.[c]?"on":"off");
+    btn.style.minHeight=cellMin+"px";
     btn.onclick=()=>{
-      const newVal=QG.grid[r][c]?0:1;
+      const newVal=QG.grid[r]?.[c]?0:1;
       const mode=document.getElementById("q-mir")?.value||"none";
-      for(const[mr,mc] of getSeedMirroredCells(r,c,5,mode)){
+      for(const[mr,mc] of getSeedMirroredCells(r,c,n,mode)){
+        if(!QG.grid[mr]) QG.grid[mr]=[];
         QG.grid[mr][mc]=newVal;
       }
       buildQSeedGrid();
     };
     wrap.appendChild(btn);
   }
+  const lbl=$("q-seed-label");
+  if(lbl){ lbl.textContent=n; lbl.style.display=""; }
 }
 
 function buildQPresets(){
   const wrap=$("q-preset-grid"); if(!wrap) return;
+  wrap.innerHTML="";
   PRESETS.forEach(p=>{
     const btn=document.createElement("button");
     btn.className="preset-btn";
     btn.innerHTML=`<span class="pe">${p.e}</span><span class="pn">${p.label}</span>`;
     btn.onclick=()=>{
       const mode=document.getElementById("q-mir")?.value||"none";
-      QG.grid=applyMirroringToGrid(p.g.map(r=>[...r]),mode);
+      const n=S.qGridSize||5;
+      QG.grid=applyMirroringToGrid(scaleSeedGridToSize(p.g,n),mode);
       buildQSeedGrid(); toast("Preset: "+p.label);
     };
     wrap.appendChild(btn);
@@ -3365,6 +3433,21 @@ function switchTab(tab){
   const qp=$("quick-page");  if(qp) qp.style.display=tab==="quick" ?"flex":"none";
 }
 
+function applyQuickZoom(){
+  const qc=$("quick-canvas");
+  if(!qc) return;
+  qc.style.transformOrigin="top left";
+  qc.style.transform=`scale(${S.qZoomScale||1})`;
+}
+function zoomQuick(factor){
+  S.qZoomScale=Math.max(0.5,Math.min(6,(S.qZoomScale||1)*factor));
+  applyQuickZoom();
+}
+function zoomQuickReset(){
+  S.qZoomScale=1;
+  applyQuickZoom();
+}
+
 // ═══════════════════════════════════════════════════════════
 //  QUICK GENERATE
 // ═══════════════════════════════════════════════════════════
@@ -3474,6 +3557,7 @@ function renderQuickCanvas(canvas,ctx,snap,view){
   }
   if(snap.resource_positions?.length) renderDots(ctx,snap.resource_positions,RES_COLOR,w,h,fakeTileSize);
   S.snap=snap;
+  applyQuickZoom();
 }
 
 
@@ -3490,6 +3574,7 @@ async function animateQuickFrames(canvas,ctx,frames){
       canvas.width=w*ts; canvas.height=h*ts;
       ctx.clearRect(0,0,canvas.width,canvas.height);
       renderHeightMap(ctx,{data:f.data},w,h,ts,true);  // coastline animation
+      applyQuickZoom();
     },100);
   });
 }
