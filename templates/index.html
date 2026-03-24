@@ -4122,16 +4122,16 @@ function init(){
       $("c-h").value=outH; $("c-w").value=outW;
       $("q-h").value=outH; $("q-w").value=outW;
       S.zoomScale=1;  // reset zoom
-      // completed_step=2 means coastline+height done, can go to CC directly
-      S.completed=Math.max(S.completed, json.snapshot?.meta?.completed_step||2);
+      // Import brings coastline shape directly from TMX; skip step-0 generation.
+      S.completed=Math.max(S.completed, json.snapshot?.meta?.completed_step ?? 0);
       updateStepUI();
       closeImport(); switchTab("wizard");
       // Small delay then redraw so canvas is visible
       await new Promise(r=>setTimeout(r,50));
       redraw();
-      // Jump to step 3 (Height confirm) or 4 (CC) depending on completed_step
-      goTo(json.snapshot?.meta?.completed_step>=2 ? 3 : 1);
-      toast(`✅ Terrain ${outW}×${outH} di-import! Lanjut ke CC →`,4000);
+      // Continue from Step 2 (Hills) because coastline is already imported.
+      goTo(1);
+      toast(`✅ Bentuk coastline ${outW}×${outH} di-import! Lanjut Step 2 (Hills).`,4000);
     }catch(e){ toast("❌ "+e.message); }
     finally{ hideLoad(); $("import-options").style.display="none"; const sz=$("terrain-size-opts"); if(sz) sz.style.display="none"; }
   });
@@ -4139,33 +4139,54 @@ function init(){
   const bImportAll=$("btn-import-all");
   if(bImportAll) bImportAll.onclick=async()=>{
     if(!_importedTmxText) return;
-    showLoad("Membaca seed pattern dari peta…");
+    const outW=parseInt($("import-out-w").value)||160;
+    const outH=parseInt($("import-out-h").value)||160;
+    showLoad(`Import bentuk map + CC/Resource ${outW}×${outH}…`);
     try{
-      // Extract 5x5 seed grid from map
-      const res=await fetch("/extract_seed",{
+      const res=await fetch("/import_map",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({tmx_text:_importedTmxText, grid_size:5})
+        body:JSON.stringify({
+          tmx_text:_importedTmxText,
+          target_w:outW,
+          target_h:outH,
+          include_entities:true
+        })
       });
       const json=await res.json();
-      if(!json.ok) throw new Error(json.error||"Extract failed");
+      if(!json.ok) throw new Error(json.error||"Import failed");
+      S.snap=json.snapshot;
 
-      // Apply seed grid to both Wizard and Quick Generate
-      S.grid=json.grid;
-      QG.grid=json.grid.map(r=>[...r]);
-      buildSeedGrid();
-      buildQSeedGrid();
-
-      // Apply map size
+      // Keep editor dimensions synced with imported output size.
       $("c-h").value=json.height; $("c-w").value=json.width;
       $("q-h").value=json.height; $("q-w").value=json.width;
+      S.zoomScale=1;
+      S.completed=Math.max(S.completed, json.snapshot?.meta?.completed_step ?? 0);
+      updateStepUI();
 
-      // Load built-in tileset PNGs from TMX for canvas preview
-      await applyImportedTilesets(_importedTmxText);
+      // Load embedded tilesets if available
+      if(json.has_tilesets&&json.tilesets){
+        for(const [,ts] of Object.entries(json.tilesets)){
+          const nameMap={"AutoLight":"ground","large-rock":"wall","export_items":"items","50pCommandCenter":"units"};
+          const key=nameMap[ts.name]; if(!key) continue;
+          S.tilesets[key]=ts;
+          const img=new Image();
+          await new Promise(r=>{img.onload=r;img.onerror=r;img.src="data:image/png;base64,"+ts.png});
+          S.tileImgs[key]=img;
+        }
+        S.tilesetLoaded=!!(S.tileImgs.ground);
+      }
+      if(!S.tilesetLoaded){
+        const pattern=parseInt($("c-ts")?.value||"5");
+        await loadTilesetsAndWait(pattern);
+      }
 
       $("import-options").style.display="none";
-      closeImport();
-      toast(`✅ Seed grid + ukuran ${json.width}×${json.height} dari peta diterapkan!`,3000);
+      closeImport(); switchTab("wizard");
+      await new Promise(r=>setTimeout(r,50));
+      redraw();
+      goTo(1);
+      toast(`✅ Bentuk map + CC/Resource di-import (${json.width}×${json.height}). Lanjut Step 2.`,3500);
     }catch(e){ toast("❌ "+e.message); }
     finally{ hideLoad(); }
   };
