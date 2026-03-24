@@ -47,6 +47,12 @@ jobs:
           TAG="${{ steps.meta.outputs.tag }}"
           ZIP_NAME="${{ steps.meta.outputs.zip_name }}"
           git archive --format=zip --output "$ZIP_NAME" "$TAG" -- . ':(exclude).github' ':(exclude).github/**'
+          git archive \
+            --format=zip \
+            --output "${{ steps.meta.outputs.zip_name }}" \
+            "${{ steps.meta.outputs.tag }}" \
+            . ':(exclude).github' ':(exclude).github/**'
+            "${{ steps.meta.outputs.tag }}"
 
       - name: Publish GitHub Release + upload ZIP
         uses: softprops/action-gh-release@v2
