@@ -54,11 +54,35 @@ def _preview_frame(label: str, matrix) -> dict:
     arr = _np.asarray(matrix)
     if arr.ndim != 2:
         raise ValueError(f"Preview frame '{label}' must be 2D, got shape {list(arr.shape)}")
+    # Some clients may submit incomplete seed cells (None). Normalize here so
+    # preview serialization never crashes the entire RPC request.
+    if arr.dtype == object:
+        arr = _np.where(arr == None, 0, arr)  # noqa: E711 - intentional None comparison for ndarray
+    arr = _np.nan_to_num(arr, nan=0, posinf=0, neginf=0)
     return {
         "label": label,
         "shape": [int(arr.shape[0]), int(arr.shape[1])],
         "data": arr.astype(int).ravel().tolist(),
     }
+
+
+def _sanitize_binary_grid(grid):
+    """Normalize user-provided seed grid into a strict 0/1 integer matrix."""
+    import numpy as _np
+    arr = _np.asarray(grid, dtype=object)
+    if arr.ndim != 2:
+        raise ValueError(f"Seed grid must be 2D, got shape {list(arr.shape)}")
+    arr = _np.where(arr == None, 0, arr)  # noqa: E711 - intentional None comparison for ndarray
+    def _to01(v):
+        try:
+            if v is None:
+                return 0
+            if isinstance(v, bool):
+                return 1 if v else 0
+            return 1 if float(v) > 0 else 0
+        except Exception:
+            return 0
+    return _np.vectorize(_to01, otypes=[int])(arr)
 
 
 def _snapshot() -> Dict[str, Any]:
@@ -392,6 +416,7 @@ def run_coastline(params_json="{}"):
     state.initial_matrix = params.get("grid", state.initial_matrix)
     if state.initial_matrix is None:
         raise ValueError("Missing 'grid' for run_coastline")
+    state.initial_matrix = _sanitize_binary_grid(state.initial_matrix)
     _apply_state_params(state, params)
     state._smoothness = float(params.get("shoreline_smoothness", 0.0))
     state.invalidate_from(WizardStep.COASTLINE)

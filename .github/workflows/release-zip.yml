@@ -1,0 +1,77 @@
+name: Release ZIP Bundle
+
+on:
+  push:
+    branches:
+      - 'main'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional tag release (contoh: v1.0.2). Kosongkan untuk build commit HEAD branch default.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine build ref
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          INPUT_TAG="${{ inputs.tag || '' }}"
+
+          if [[ -n "$INPUT_TAG" ]]; then
+            git fetch --tags
+            git rev-parse --verify "$INPUT_TAG" >/dev/null
+            BUILD_REF="$INPUT_TAG"
+            ZIP_NAME="Mappedia-${INPUT_TAG}.zip"
+            IS_TAG_RELEASE="true"
+          else
+            SHORT_SHA="$(git rev-parse --short=7 "${GITHUB_SHA}")"
+            BUILD_REF="${GITHUB_SHA}"
+            ZIP_NAME="Mappedia-main-${SHORT_SHA}.zip"
+            IS_TAG_RELEASE="false"
+          fi
+
+          echo "build_ref=$BUILD_REF" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "is_tag_release=$IS_TAG_RELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Build ZIP bundle from tracked files
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_REF="${{ steps.meta.outputs.build_ref }}"
+          ZIP_NAME="${{ steps.meta.outputs.zip_name }}"
+
+          git rev-parse --verify "$BUILD_REF" >/dev/null
+          git archive --format=zip --output "$ZIP_NAME" "$BUILD_REF" -- . ':(exclude).github' ':(exclude).github/**'
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.zip_name }}
+          path: ${{ steps.meta.outputs.zip_name }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release + upload ZIP
+        if: steps.meta.outputs.is_tag_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.build_ref }}
+          generate_release_notes: true
+          files: ${{ steps.meta.outputs.zip_name }}
