@@ -41,20 +41,12 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "zip_name=Mappedia-${TAG}.zip" >> "$GITHUB_OUTPUT"
-
       - name: Build ZIP bundle from tracked files
         run: |
-          TAG="${{ steps.meta.outputs.tag }}"
-          ZIP_NAME="${{ steps.meta.outputs.zip_name }}"
-          bash scripts/build_release_zip.sh "$TAG" "$ZIP_NAME"
-          git archive --format=zip --output "$ZIP_NAME" "$TAG" -- . ':(exclude).github' ':(exclude).github/**'
           git archive \
             --format=zip \
             --output "${{ steps.meta.outputs.zip_name }}" \
-            "${{ steps.meta.outputs.tag }}" \
-            . ':(exclude).github' ':(exclude).github/**'
             "${{ steps.meta.outputs.tag }}"
-
       - name: Publish GitHub Release + upload ZIP
         uses: softprops/action-gh-release@v2
         with:
