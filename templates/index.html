@@ -7,27 +7,28 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --ink:    #101317;
-  --ink1:   #151a20;
-  --ink2:   #1b222b;
-  --ink3:   #212a35;
-  --line:   #2e3a49;
-  --dim:    #8b9cb0;
-  --sub:    #a8b8ca;
-  --body:   #d6e0eb;
-  --head:   #f0f6ff;
-  --hi:     #6ea8fe;
-  --hi2:    #8ec5ff;
+  --ink:    #0b1220;
+  --ink1:   #0f172a;
+  --ink2:   #111c33;
+  --ink3:   #16243f;
+  --line:   #263754;
+  --dim:    #8ea2c1;
+  --sub:    #b7c5dd;
+  --body:   #dce6f5;
+  --head:   #f8fbff;
+  --hi:     #60a5fa;
+  --hi2:    #93c5fd;
   --ok:     #58d68d;
   --warn:   #f5b041;
   --err:    #f06d6d;
   --purple: #b39ddb;
-  --r:      8px;
+  --r:      12px;
   --touch:  52px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --hdr:    48px;
   --steps:  38px;
   --foot:   60px;
+  --canvas-max-h: clamp(220px, 40dvh, 420px);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -55,10 +56,11 @@ header {
   display: flex;
   align-items: center;
   padding: 0 6px 0 14px;
-  gap: 0;
+  gap: 6px;
   flex-shrink: 0;
   position: relative;
   z-index: 50;
+  box-shadow: 0 10px 26px rgba(2, 6, 23, .35);
 }
 header::after {
   content: none;
@@ -92,12 +94,13 @@ header::after {
   white-space: nowrap;
   touch-action: manipulation;
   letter-spacing: 0;
-  transition: color .15s, border-color .15s;
+  transition: color .15s, border-color .15s, background .15s;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
+.tab-btn:hover { background: rgba(255,255,255,.03); }
 .tab-btn.active { color: var(--hi); border-bottom-color: var(--hi); }
 .tab-btn:active { color: var(--head); }
 
@@ -123,7 +126,7 @@ header::after {
   display: flex;
   overflow-x: auto;
   scrollbar-width: none;
-  background: var(--ink1);
+  background: linear-gradient(180deg, rgba(17,28,51,.97), rgba(15,23,42,.95));
   border-bottom: 1px solid var(--line);
   padding: 0 4px;
   flex-shrink: 0;
@@ -145,9 +148,10 @@ header::after {
   cursor: pointer;
   white-space: nowrap;
   letter-spacing: .02em;
-  transition: color .15s, border-color .15s;
+  transition: color .15s, border-color .15s, background .15s;
   touch-action: manipulation;
 }
+.step-btn:hover { background: rgba(255,255,255,.03); }
 .step-btn.active { color: var(--hi); border-bottom-color: var(--hi); }
 .step-btn.done   { color: var(--ok); border-bottom-color: var(--ok); }
 .step-btn:disabled { opacity: .3; pointer-events: none; }
@@ -155,18 +159,21 @@ header::after {
 /* ── CANVAS AREA ── */
 /* Canvas strip — height capped, width always full */
 #canvas-wrap {
-  background: #040810;
+  background: #040812;
   border-bottom: 1px solid var(--line);
   overflow: hidden;
   position: relative;
   flex-shrink: 0;
-  max-height: 44dvh;
+  max-height: var(--canvas-max-h);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  isolation: isolate;
 }
 
 /* Map container always fills full width */
 #map-container {
   position: relative;
   width: 100%;
+  margin-inline: auto;
 }
 
 /* Canvas: 1px/cell internally, CSS scales to fill container */
@@ -197,7 +204,7 @@ header::after {
   color: rgba(0,229,212,.6);
   pointer-events: none;
   z-index: 5;
-  background: rgba(8,13,24,.7);
+  background: rgba(8,13,24,.82);
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid rgba(0,229,212,.2);
@@ -211,6 +218,11 @@ header::after {
   flex-direction: column;
   gap: 5px;
   z-index: 10;
+  padding: 5px;
+  border-radius: 10px;
+  border: 1px solid rgba(38,55,84,.7);
+  background: rgba(8,13,24,.45);
+  backdrop-filter: blur(6px);
 }
 .ctool-btn {
   width: 40px; height: 40px;
@@ -235,23 +247,24 @@ header::after {
 #controls {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 13px calc(var(--foot) + var(--safe-b) + 20px);
+  padding: 14px 14px calc(var(--foot) + var(--safe-b) + 20px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 
 /* ── CARD ── */
 .card {
-  background: var(--ink2);
+  background: linear-gradient(180deg, rgba(22,36,63,.9), rgba(17,28,51,.9));
   border: 1px solid var(--line);
   border-radius: var(--r);
-  padding: 12px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
+  box-shadow: 0 10px 24px rgba(2,6,23,.2);
 }
 .card h2 {
   font-size: .92rem;
@@ -290,7 +303,7 @@ header::after {
   padding: 8px 4px;
   background: var(--ink3);
   border: 1.5px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   color: var(--body);
   min-height: 58px;
@@ -307,6 +320,7 @@ header::after {
   display: grid;
   grid-template-columns: repeat(5,1fr);
   gap: 5px;
+  max-width: 360px;
 }
 .seed-cell {
   aspect-ratio: 1;
@@ -318,14 +332,51 @@ header::after {
   touch-action: manipulation;
   transition: background .1s, border-color .1s;
 }
-#seed-grid {
-  display: grid;
-  grid-template-columns: repeat(5,1fr);
-  gap: 5px;
-  max-width: 360px;
-}
 .seed-cell.on  { background: var(--hi); border-color: var(--hi); }
 .seed-cell.off { background: var(--ink); }
+
+.wizard-page {
+  display:flex;
+  flex-direction:column;
+  flex:1;
+  overflow:hidden;
+}
+.seed-resize-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.inline-group { display:flex; align-items:center; gap:5px; }
+.icon-btn {
+  width:32px;
+  height:32px;
+  border-radius:6px;
+  border:1px solid var(--line);
+  background:var(--ink3);
+  color:var(--body);
+  cursor:pointer;
+  font-size:1rem;
+}
+.seed-size-input {
+  width:54px;
+  text-align:center;
+  background:var(--ink);
+  border:1px solid var(--hi);
+  border-radius:6px;
+  color:var(--hi);
+  font-weight:700;
+  font-size:.85rem;
+  font-family:'IBM Plex Mono',monospace;
+  padding:5px 6px;
+  min-height:36px;
+}
+.muted-note {
+  color:var(--dim);
+  font-size:.72rem;
+  font-family:'IBM Plex Mono',monospace;
+}
 
 /* ── FORM ── */
 .ctrl-grid {
@@ -368,7 +419,7 @@ input[type="range"] { width: 100%; accent-color: var(--hi); cursor: pointer; hei
 /* ── BUTTONS ── */
 .btn {
   padding: 13px 16px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-size: .88rem;
@@ -378,7 +429,7 @@ input[type="range"] { width: 100%; accent-color: var(--hi); cursor: pointer; hei
   background: var(--ink3);
   width: 100%;
   touch-action: manipulation;
-  transition: opacity .15s;
+  transition: opacity .15s, transform .12s;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   display: flex;
@@ -389,6 +440,7 @@ input[type="range"] { width: 100%; accent-color: var(--hi); cursor: pointer; hei
 }
 .btn:disabled { opacity: .35; pointer-events: none; }
 .btn:active:not(:disabled) { opacity: .72; }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
 
 .btn-primary {
   background: color-mix(in srgb, var(--hi) 8%, var(--ink3));
@@ -504,7 +556,7 @@ footer {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   z-index: 50;
-  background: var(--ink1);
+  background: color-mix(in srgb, var(--ink1) 92%, #000);
   border-top: 1px solid var(--line);
   padding: 10px 13px;
   padding-bottom: max(10px, var(--safe-b));
@@ -529,6 +581,19 @@ footer .btn { flex: 1; min-height: 44px; }
   flex-shrink: 0;
 }
 #quick-canvas { display: block; image-rendering: pixelated; max-width: 100%; }
+#quick-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 5px;
+  z-index: 12;
+  padding: 5px;
+  border-radius: 10px;
+  border: 1px solid rgba(38,55,84,.7);
+  background: rgba(8,13,24,.45);
+  backdrop-filter: blur(6px);
+}
 #quick-controls {
   flex: 1;
   overflow-y: auto;
@@ -777,6 +842,7 @@ footer .btn { flex: 1; min-height: 44px; }
   :root {
     --hdr: 54px;
     --steps: 44px;
+    --canvas-max-h: clamp(190px, 34dvh, 320px);
   }
 
   .wordmark {
@@ -812,7 +878,7 @@ footer .btn { flex: 1; min-height: 44px; }
   }
 
   #canvas-wrap {
-    max-height: 38dvh;
+    max-height: var(--canvas-max-h);
   }
 
   #canvas-toolbar {
@@ -886,7 +952,7 @@ footer .btn { flex: 1; min-height: 44px; }
 
 @media (max-width: 420px) {
   #canvas-wrap {
-    max-height: 34dvh;
+    max-height: clamp(170px, 30dvh, 280px);
   }
 
   .preset-grid {
@@ -901,7 +967,7 @@ footer .btn { flex: 1; min-height: 44px; }
 
 @media (max-height: 720px) and (orientation: landscape) {
   #canvas-wrap {
-    max-height: 52dvh;
+    max-height: clamp(180px, 48dvh, 360px);
   }
 
   #controls {
@@ -910,9 +976,46 @@ footer .btn { flex: 1; min-height: 44px; }
 }
 
 @media (min-width: 640px) {
-  /* canvas-wrap: no height cap — canvas is always fully visible */
   .ctrl-grid { grid-template-columns: repeat(2,1fr); }
   #seed-grid { max-width: 300px; }
+}
+
+@media (min-width: 1024px) {
+  #wizard-page {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  #step-bar {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
+  #canvas-wrap {
+    grid-column: 1 / 2;
+    max-height: none;
+    height: calc(100dvh - var(--hdr) - var(--steps) - 8px);
+    border-right: 1px solid var(--line);
+  }
+
+  #controls {
+    grid-column: 2 / 3;
+    padding-top: 18px;
+    padding-left: 16px;
+    padding-right: 16px;
+    height: calc(100dvh - var(--hdr) - var(--steps));
+  }
+
+  footer {
+    width: min(430px, 100vw);
+    left: auto;
+    right: 0;
+    border-left: 1px solid var(--line);
+  }
 }
 </style>
 </head>
@@ -933,7 +1036,7 @@ footer .btn { flex: 1; min-height: 44px; }
 </header>
 
 <!-- ══ WIZARD MODE ══ -->
-<div id="wizard-page" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+<div id="wizard-page" class="wizard-page">
 
   <!-- Step bar -->
   <nav id="step-bar">
@@ -972,25 +1075,16 @@ footer .btn { flex: 1; min-height: 44px; }
         <div class="section-label">Preset</div>
         <div class="preset-grid" id="preset-grid"></div>
 
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <div class="seed-resize-row">
           <span class="section-label">Seed Grid</span>
-          <div style="display:flex;align-items:center;gap:5px">
-            <button onclick="resizeSeedGrid(S.gridSize-1)"
-              style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
-                     background:var(--ink3);color:var(--body);cursor:pointer;font-size:1rem">−</button>
+          <div class="inline-group">
+            <button onclick="resizeSeedGrid(S.gridSize-1)" class="icon-btn">−</button>
             <input id="grid-size-input" type="number" value="5" min="2"
-              style="width:54px;text-align:center;background:var(--ink);
-                     border:1px solid var(--hi);border-radius:6px;
-                     color:var(--hi);font-weight:700;font-size:.85rem;
-                     font-family:'IBM Plex Mono',monospace;padding:5px 6px;min-height:36px"
+              class="seed-size-input"
               onchange="resizeSeedGrid(parseInt(this.value)||5)"
               onkeydown="if(event.key==='Enter'){resizeSeedGrid(parseInt(this.value)||5);this.blur();}">
-            <button onclick="resizeSeedGrid(S.gridSize+1)"
-              style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
-                     background:var(--ink3);color:var(--body);cursor:pointer;font-size:1rem">+</button>
-            <span style="color:var(--dim);font-size:.72rem;font-family:'IBM Plex Mono',monospace">
-              ×<span id="grid-size-label">5</span>
-            </span>
+            <button onclick="resizeSeedGrid(S.gridSize+1)" class="icon-btn">+</button>
+            <span class="muted-note">×<span id="grid-size-label">5</span></span>
           </div>
         </div>
         <div id="seed-grid"></div>
@@ -1387,6 +1481,11 @@ footer .btn { flex: 1; min-height: 44px; }
 <!-- ══ QUICK MODE ══ -->
 <div id="quick-page">
   <div id="quick-canvas-wrap">
+    <div id="quick-toolbar">
+      <button class="ctool-btn" onclick="zoomQuick(1.25)" title="Quick Zoom In">+</button>
+      <button class="ctool-btn" onclick="zoomQuick(1/1.25)" title="Quick Zoom Out">−</button>
+      <button class="ctool-btn" onclick="zoomQuickReset()" title="Quick Fit">⊙</button>
+    </div>
     <canvas id="quick-canvas"></canvas>
   </div>
   <div id="quick-controls">
@@ -1397,12 +1496,12 @@ footer .btn { flex: 1; min-height: 44px; }
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
         <span class="section-label">Seed</span>
         <div style="display:flex;gap:5px">
-          <button onclick="resizeQSeedGrid(S.qGridSize-1)"
+          <button onclick="resizeQSeedGrid((S.qGridSize||5)-1)"
             style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
                    background:var(--ink3);color:var(--body);cursor:pointer">−</button>
           <span style="font-size:.72rem;color:var(--dim);align-self:center;
                  font-family:'IBM Plex Mono',monospace">×<span id="q-seed-label" style="display:none"></span></span>
-          <button onclick="resizeQSeedGrid(S.qGridSize+1)"
+          <button onclick="resizeQSeedGrid((S.qGridSize||5)+1)"
             style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);
                    background:var(--ink3);color:var(--body);cursor:pointer">+</button>
         </div>
@@ -1483,7 +1582,7 @@ footer .btn { flex: 1; min-height: 44px; }
       <button class="modal-close" onclick="closeImport()">✕</button>
     </div>
     <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
-      <input type="file" id="file-input" accept=".tmx,text/xml,application/xml" style="display:none">
+      <input type="file" id="file-input" accept=".tmx,text/xml,application/xml" style="display:none" onchange="handleFileInput(event)">
       <div class="drop-icon">📁</div>
       <div class="drop-text">Tap untuk pilih file .tmx</div>
       <div class="drop-file" id="drop-file" style="display:none"></div>
@@ -1573,6 +1672,7 @@ const S = {
   bridgeImg:null, bridgeTilesetInfo:null,
   bridgeImgs:{}, bridgeTsInfos:{}, activeBridge:"",
   zoomScale:1, panX:0, panY:0,
+  qGridSize:5, qZoomScale:1,
   animTimer:null, animFrames:[], animIdx:0,
   quickTmx:null,
   placeMode:"unit",   // "unit" | "item"  — active sub-mode for step 5
@@ -2950,6 +3050,22 @@ function applyMirroringToGrid(grid, mode){
   return g;
 }
 
+function scaleSeedGridToSize(grid, newSize){
+  const src = Array.isArray(grid) ? grid : [];
+  const old = Math.max(1, src.length || 1);
+  const out = [];
+  for(let r=0;r<newSize;r++){
+    const row=[];
+    for(let c=0;c<newSize;c++){
+      const sr=Math.min(old-1, Math.floor(r*old/newSize));
+      const sc=Math.min(old-1, Math.floor(c*old/newSize));
+      row.push(src[sr]?.[sc] ? 1 : 0);
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 function buildSeedGrid(){
   const n=S.gridSize;
   const wrap=$("seed-grid"); if(!wrap) return;
@@ -2976,31 +3092,23 @@ function buildSeedGrid(){
 }
 
 function resizeQSeedGrid(delta){
-  // Quick mode seed grid resize — mirrors resizeSeedGrid behaviour
-  S.qGridSize = Math.max(2, Math.min(9, (S.qGridSize||5) + delta));
+  // Quick mode seed grid resize (absolute new size)
+  const next = Math.max(2, Math.min(9, parseInt(delta)||5));
+  S.qGridSize = next;
+  QG.grid = scaleSeedGridToSize(QG.grid, next);
+  const mode=document.getElementById("q-mir")?.value||"none";
+  QG.grid = applyMirroringToGrid(QG.grid, mode);
   const lbl = $("q-seed-label");
   if(lbl){ lbl.textContent = S.qGridSize; lbl.style.display = ""; }
   buildQSeedGrid();
+  toast(`Quick grid ${next}×${next}`);
 }
 function resizeSeedGrid(newSize){
-  newSize=Math.max(2,parseInt(newSize)||5);
-  const old=S.gridSize;
+  newSize=Math.max(2,Math.min(9, parseInt(newSize)||5));
   S.gridSize=newSize;
   const inp=$("grid-size-input"); if(inp) inp.value=newSize;
   const lbl=$("grid-size-label"); if(lbl) lbl.textContent=newSize;
-  // Preserve existing values, expand/shrink grid
-  const newGrid=[];
-  for(let r=0;r<newSize;r++){
-    const row=[];
-    for(let c=0;c<newSize;c++){
-      // Scale old grid proportionally
-      const sr=Math.floor(r*old/newSize);
-      const sc=Math.floor(c*old/newSize);
-      row.push(S.grid[sr]?.[sc]||0);
-    }
-    newGrid.push(row);
-  }
-  S.grid=newGrid;
+  S.grid=scaleSeedGridToSize(S.grid, newSize);
   // Re-apply mirroring
   const mode=document.getElementById("c-mir")?.value||"none";
   S.grid=applyMirroringToGrid(S.grid,mode);
@@ -3010,13 +3118,15 @@ function resizeSeedGrid(newSize){
 
 function buildPresets(){
   const wrap=$("preset-grid"); if(!wrap) return;
+  wrap.innerHTML="";
   PRESETS.forEach(p=>{
     const btn=document.createElement("button");
     btn.className="preset-btn";
     btn.innerHTML=`<span class="pe">${p.e}</span><span class="pn">${p.label}</span>`;
     btn.onclick=()=>{
       const mode=document.getElementById("c-mir")?.value||"none";
-      S.grid=applyMirroringToGrid(p.g.map(r=>[...r]),mode);
+      const n=S.gridSize||5;
+      S.grid=applyMirroringToGrid(scaleSeedGridToSize(p.g,n),mode);
       buildSeedGrid(); toast("Preset: "+p.label);
     };
     wrap.appendChild(btn);
@@ -3032,32 +3142,42 @@ const QG = {
 
 function buildQSeedGrid(){
   const wrap=$("q-seed-grid"); if(!wrap) return;
+  const n=S.qGridSize || (QG.grid?.length || 5);
+  S.qGridSize=n;
+  QG.grid=scaleSeedGridToSize(QG.grid,n);
   wrap.innerHTML="";
-  for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+  wrap.style.gridTemplateColumns=`repeat(${n},1fr)`;
+  const cellMin=Math.max(28, Math.min(52, Math.floor(280/n)));
+  for(let r=0;r<n;r++) for(let c=0;c<n;c++){
     const btn=document.createElement("button");
-    btn.className="seed-cell "+(QG.grid[r][c]?"on":"off");
-    btn.style.minHeight="38px";
+    btn.className="seed-cell "+(QG.grid[r]?.[c]?"on":"off");
+    btn.style.minHeight=cellMin+"px";
     btn.onclick=()=>{
-      const newVal=QG.grid[r][c]?0:1;
+      const newVal=QG.grid[r]?.[c]?0:1;
       const mode=document.getElementById("q-mir")?.value||"none";
-      for(const[mr,mc] of getSeedMirroredCells(r,c,5,mode)){
+      for(const[mr,mc] of getSeedMirroredCells(r,c,n,mode)){
+        if(!QG.grid[mr]) QG.grid[mr]=[];
         QG.grid[mr][mc]=newVal;
       }
       buildQSeedGrid();
     };
     wrap.appendChild(btn);
   }
+  const lbl=$("q-seed-label");
+  if(lbl){ lbl.textContent=n; lbl.style.display=""; }
 }
 
 function buildQPresets(){
   const wrap=$("q-preset-grid"); if(!wrap) return;
+  wrap.innerHTML="";
   PRESETS.forEach(p=>{
     const btn=document.createElement("button");
     btn.className="preset-btn";
     btn.innerHTML=`<span class="pe">${p.e}</span><span class="pn">${p.label}</span>`;
     btn.onclick=()=>{
       const mode=document.getElementById("q-mir")?.value||"none";
-      QG.grid=applyMirroringToGrid(p.g.map(r=>[...r]),mode);
+      const n=S.qGridSize||5;
+      QG.grid=applyMirroringToGrid(scaleSeedGridToSize(p.g,n),mode);
       buildQSeedGrid(); toast("Preset: "+p.label);
     };
     wrap.appendChild(btn);
@@ -3313,6 +3433,21 @@ function switchTab(tab){
   const qp=$("quick-page");  if(qp) qp.style.display=tab==="quick" ?"flex":"none";
 }
 
+function applyQuickZoom(){
+  const qc=$("quick-canvas");
+  if(!qc) return;
+  qc.style.transformOrigin="top left";
+  qc.style.transform=`scale(${S.qZoomScale||1})`;
+}
+function zoomQuick(factor){
+  S.qZoomScale=Math.max(0.5,Math.min(6,(S.qZoomScale||1)*factor));
+  applyQuickZoom();
+}
+function zoomQuickReset(){
+  S.qZoomScale=1;
+  applyQuickZoom();
+}
+
 // ═══════════════════════════════════════════════════════════
 //  QUICK GENERATE
 // ═══════════════════════════════════════════════════════════
@@ -3422,6 +3557,7 @@ function renderQuickCanvas(canvas,ctx,snap,view){
   }
   if(snap.resource_positions?.length) renderDots(ctx,snap.resource_positions,RES_COLOR,w,h,fakeTileSize);
   S.snap=snap;
+  applyQuickZoom();
 }
 
 
@@ -3438,6 +3574,7 @@ async function animateQuickFrames(canvas,ctx,frames){
       canvas.width=w*ts; canvas.height=h*ts;
       ctx.clearRect(0,0,canvas.width,canvas.height);
       renderHeightMap(ctx,{data:f.data},w,h,ts,true);  // coastline animation
+      applyQuickZoom();
     },100);
   });
 }
