@@ -1,0 +1,58 @@
+name: Release ZIP Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag release (contoh: v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine tag name
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            git fetch --tags
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              git checkout "$TAG"
+            else
+              echo "Tag $TAG tidak ditemukan." >&2
+              exit 1
+            fi
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "zip_name=Mappedia-${TAG}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build ZIP bundle from tracked files
+        run: |
+          git archive \
+            --format=zip \
+            --output "${{ steps.meta.outputs.zip_name }}" \
+            "${{ steps.meta.outputs.tag }}" \
+            . ':(exclude).github' ':(exclude).github/**'
+
+      - name: Publish GitHub Release + upload ZIP
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ steps.meta.outputs.zip_name }}
