@@ -1239,6 +1239,10 @@ footer .btn { flex: 1; min-height: 44px; }
           <div class="range-header"><span>Level Laut</span><span class="range-val" id="ov">3</span></div>
           <input type="range" id="ocean-lvl" min="0" max="5" value="3" oninput="ov.textContent=this.value">
         </div>
+        <div class="range-row">
+          <div class="range-header"><span>Konsolidasi Area</span><span class="range-val" id="hav">1.0×</span></div>
+          <input type="range" id="height-area" min="2" max="12" value="5" oninput="hav.textContent=(this.value/5).toFixed(1)+'×'">
+        </div>
         <button class="btn btn-primary" id="btn-height">⛰️ Generate Height Map</button>
       </div>
     </div>
@@ -1546,6 +1550,10 @@ footer .btn { flex: 1; min-height: 44px; }
       <div class="range-row">
         <div class="range-header"><span>Height Level</span><span class="range-val" id="qhv">7</span></div>
         <input type="range" id="q-hlvl" min="1" max="9" value="7" oninput="qhv.textContent=this.value">
+      </div>
+      <div class="range-row">
+        <div class="range-header"><span>Konsolidasi Area</span><span class="range-val" id="qhav">1.0×</span></div>
+        <input type="range" id="q-height-area" min="2" max="12" value="5" oninput="qhav.textContent=(this.value/5).toFixed(1)+'×'">
       </div>
 
       <div class="progress-wrap">
@@ -3296,7 +3304,12 @@ $("btn-coast").onclick=async()=>{
 $("btn-height").onclick=async()=>{
   showLoad("Generating height map…");
   try{
-    const res=await rpc("run_height_ocean",{heightLevels:iv("height-lvl"),oceanLevels:iv("ocean-lvl")});
+    const areaScale=(parseInt($("height-area")?.value||"5",10))/5;
+    const res=await rpc("run_height_ocean",{
+      heightLevels:iv("height-lvl"),
+      oceanLevels:iv("ocean-lvl"),
+      heightRegionScale: areaScale
+    });
     S.snap=res.snapshot; markDone(2); setStatus("Height map ✓");
     redraw(); toast("✅ Height map siap!");
   }catch(e){ toast("❌ "+e.message) }
@@ -3489,7 +3502,12 @@ $("btn-quick-gen").onclick=async()=>{
 
     // 4. Height
     setQ("Height map…",35);
-    const h=await rpc("run_height_ocean",{heightLevels:iv("q-hlvl"),oceanLevels:3});
+    const qAreaScale=(parseInt($("q-height-area")?.value||"5",10))/5;
+    const h=await rpc("run_height_ocean",{
+      heightLevels:iv("q-hlvl"),
+      oceanLevels:3,
+      heightRegionScale:qAreaScale
+    });
     renderQuickCanvas(qCanvas,qCtx,h.snapshot,"height");
 
     // 5. CC
