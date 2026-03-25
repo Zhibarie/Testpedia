@@ -29,6 +29,8 @@ class WizardState:
     wall_matrix: Optional[np.ndarray] = field(default=None, repr=False)
     perlin_seed: Optional[int] = None
     perlin_map: Optional[np.ndarray] = field(default=None, repr=False)
+    region_slope_map: Optional[np.ndarray] = field(default=None, repr=False)
+    region_metrics: dict = field(default_factory=dict)
     height_map: Optional[np.ndarray] = field(default=None, repr=False)
     units_matrix: Optional[np.ndarray] = field(default=None, repr=False)
     cc_positions: List[Tuple[int,int]] = field(default_factory=list)
@@ -85,7 +87,8 @@ class WizardState:
         # bridge_tilesets, active_bridge_name, coast_smooth_passes, custom_terrain_mapping
         # are user preferences — they survive invalidation.
         if step <= WizardStep.HEIGHT_OCEAN:
-            self.perlin_seed = None; self.perlin_map = None; self.height_map = None
+            self.perlin_seed = None; self.perlin_map = None; self.region_slope_map = None
+            self.region_metrics = {}; self.height_map = None
         if step <= WizardStep.COMMAND_CENTERS:
             self.units_matrix = None; self.cc_positions = []; self.cc_groups = []
         if step <= WizardStep.RESOURCES:
