@@ -1,6 +1,6 @@
-# Testpedia — Rusted Warfare Map Generator
+# Mappedia — Rusted Warfare Map Generator
 
-Testpedia is a **Flask-based Rusted Warfare map generator** with a web UI to create, edit, preview, and export `.tmx` maps.
+Mappedia is a **Flask-based Rusted Warfare map generator** with a web UI to create, edit, preview, and export `.tmx` maps.
 
 ## Program Overview
 
