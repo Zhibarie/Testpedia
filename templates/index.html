@@ -1686,13 +1686,26 @@ const CC_COLOR   = "rgba(56,189,248,0.85)";
 const RES_COLOR  = "rgba(52,211,153,0.85)";
 
 const PRESETS=[
-  {label:"Island",    e:"🏝️",g:[[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]]},
-  {label:"Continent", e:"🌍",g:[[1,1,1,1,1],[1,1,1,1,1],[1,1,1,1,0],[0,1,1,0,0],[0,0,1,0,0]]},
-  {label:"Archipelago",e:"🗺️",g:[[1,0,0,1,0],[0,0,1,0,1],[0,1,0,0,0],[1,0,0,1,0],[0,1,0,0,1]]},
-  {label:"Strait",    e:"🌊",g:[[1,1,0,1,1],[1,1,0,1,1],[1,0,0,0,1],[1,1,0,1,1],[1,1,0,1,1]]},
-  {label:"Peninsula", e:"🪨",g:[[1,1,1,1,1],[1,1,1,1,0],[1,1,1,0,0],[1,1,0,0,0],[1,0,0,0,0]]},
-  {label:"Inland Sea",e:"💧",g:[[1,1,1,1,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,1]]},
+  {label:"Island", e:"🏝️", seed:"0010001110111110111000100"},
+  {label:"Continent", e:"🌍", seed:"1111111111111100110000100"},
+  {label:"Archipelago", e:"🗺️", seed:"1001000101010001001001001"},
+  {label:"Strait", e:"🌊", seed:"1101111011110001110111011"},
+  {label:"Peninsula", e:"🪨", seed:"1111111110111001100010000"},
+  {label:"Inland Sea", e:"💧", seed:"1111110001100011000111111"},
 ];
+
+function decodePresetSeed(seed, size=5){
+  const bits=String(seed||"").replace(/[^01]/g,"");
+  const grid=[];
+  for(let r=0;r<size;r++){
+    const row=[];
+    for(let c=0;c<size;c++){
+      row.push(bits[(r*size)+c]==="1"?1:0);
+    }
+    grid.push(row);
+  }
+  return grid;
+}
 
 // ═══════════════════════════════════════════════════════════
 //  APP STATE
@@ -1711,6 +1724,7 @@ const S = {
   animTimer:null, animFrames:[], animIdx:0,
   quickTmx:null,
   placeMode:"unit",   // "unit" | "item"  — active sub-mode for step 5
+  _listeners:{canvas:false,pinch:false,quickReady:false},
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -1823,6 +1837,7 @@ function getCtx(){ return getCanvas().getContext("2d") }
 function getOvCtx(){ return getOverlay().getContext("2d") }
 
 let tileSize=2;
+let _zoomBusyUntil=0;
 
 // Canvas approach: 1px/cell in canvas data, CSS width:100% scales to display.
 // tileSize = display-px-per-cell, used only for hit-testing.
@@ -2264,6 +2279,9 @@ function drawPolygonOverlay(){
 //  ZOOM
 // ═══════════════════════════════════════════════════════════
 function zoom(factor){
+  const now=performance.now();
+  if(now<_zoomBusyUntil) return;
+  _zoomBusyUntil=now+70;
   S.zoomScale = Math.max(0.5, Math.min(8, S.zoomScale * factor));
   redraw();
 }
@@ -2291,6 +2309,8 @@ window.addEventListener("orientationchange", _onViewportResize, {passive:true});
 // Pinch-to-zoom on mobile
 let _pinchDist=0;
 function setupPinchZoom(){
+  if(S._listeners.pinch) return;
+  S._listeners.pinch=true;
   const wrap=$("canvas-wrap"); if(!wrap) return;
   wrap.addEventListener("touchstart",e=>{
     if(e.touches.length===2){
@@ -2307,13 +2327,41 @@ function setupPinchZoom(){
       const d=Math.sqrt(dx*dx+dy*dy);
       if(_pinchDist>0){
         const factor=d/_pinchDist;
-        S.zoomScale=Math.max(.25,Math.min(8,S.zoomScale*factor));
-        redraw();
+        zoom(factor);
       }
       _pinchDist=d;
     }
   },{passive:false});
   wrap.addEventListener("touchend",e=>{ if(e.touches.length<2) _pinchDist=0; },{passive:true});
+}
+
+function captureViewportState(){
+  const wrap=$("canvas-wrap");
+  const mapC=$("map-container");
+  return {
+    zoom:S.zoomScale,
+    left:wrap?.scrollLeft||0,
+    top:wrap?.scrollTop||0,
+    width:mapC?.clientWidth||0,
+    height:mapC?.clientHeight||0,
+  };
+}
+
+function restoreViewportState(state){
+  if(!state) return;
+  const wrap=$("canvas-wrap");
+  const mapC=$("map-container");
+  S.zoomScale=Math.max(0.5, Math.min(8, Number(state.zoom)||1));
+  redraw();
+  requestAnimationFrame(()=>{
+    if(!wrap) return;
+    const w0=Math.max(1, Number(state.width)||1);
+    const h0=Math.max(1, Number(state.height)||1);
+    const w1=Math.max(1, mapC?.clientWidth||w0);
+    const h1=Math.max(1, mapC?.clientHeight||h0);
+    wrap.scrollLeft=Math.max(0, Math.round((Number(state.left)||0)*(w1/w0)));
+    wrap.scrollTop=Math.max(0, Math.round((Number(state.top)||0)*(h1/h0)));
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2670,10 +2718,10 @@ function canvasXY(e){
   const dx = cx - rect.left;   // display px from left
   const dy = cy - rect.top;    // display px from top
   // Recompute tileSize from actual rendered size (handles zoom + reflow)
-  const ts = rect.width / cv.width;
+  const ts = Math.max(0.0001, rect.width / Math.max(1, cv.width));
   const mapW = cv.width, mapH = cv.height;
-  const c = Math.max(0, Math.min(mapW-1, Math.floor(dx / ts)));
-  const r = Math.max(0, Math.min(mapH-1, Math.floor(dy / ts)));
+  const c = Math.max(0, Math.min(mapW-1, Math.round((dx / ts) - 0.5)));
+  const r = Math.max(0, Math.min(mapH-1, Math.round((dy / ts) - 0.5)));
   // Internal coords for direct ctx usage
   const px = Math.max(0, Math.min(mapW, dx / ts));
   const py = Math.max(0, Math.min(mapH, dy / ts));
@@ -2683,6 +2731,22 @@ function canvasXY(e){
 function _eventPoint(e){
   const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
   return { x: t?.clientX ?? 0, y: t?.clientY ?? 0 };
+}
+
+function snapPlacementCell(r,c){
+  const snap=S.snap;
+  const h=snap?.meta?.height||0, w=snap?.meta?.width||0;
+  if(!h||!w) return null;
+  const rr=Math.max(0,Math.min(h-1,Math.round(Number(r)||0)));
+  const cc=Math.max(0,Math.min(w-1,Math.round(Number(c)||0)));
+  return [rr,cc];
+}
+
+function canPlaceOnTerrain(r,c){
+  const hm=S.snap?.matrices?.height_map;
+  if(!hm?.data||!hm?.shape) return true;
+  const w=hm.shape[1];
+  return Number(hm.data[r*w+c])>0;
 }
 
 function bindTouchGestureHandlers(el, handlers){
@@ -2716,6 +2780,8 @@ function bindTouchGestureHandlers(el, handlers){
 }
 
 function setupCanvasEvents(){
+  if(S._listeners.canvas) return;
+  S._listeners.canvas=true;
   const cv=getCanvas();
 
   bindTouchGestureHandlers(cv,{
@@ -2768,6 +2834,8 @@ function setupCanvasEvents(){
 let _brushBatch=[];
 
 function handleCanvasDown(r,c,isRight=false){
+  const snapped=snapPlacementCell(r,c);
+  if(snapped){ r=snapped[0]; c=snapped[1]; }
   if(S.step===1&&S.hillMode==="brush"){
     _brushBatch=[[r,c]];
   }else if(S.step===1&&S.hillMode==="polygon"){
@@ -3064,6 +3132,13 @@ function buildBrushSizes(){
 //  CC / RESOURCE PLACEMENT
 // ═══════════════════════════════════════════════════════════
 async function placeCC(r,c,isRight=false){
+  const snapped=snapPlacementCell(r,c);
+  if(!snapped) return;
+  [r,c]=snapped;
+  if(!isRight && !canPlaceOnTerrain(r,c)){
+    toast("⛔ CC hanya bisa di terrain darat.");
+    return;
+  }
   const mirrored=$("cc-mir").checked;
   const method=isRight?"remove_cc_manual":"place_cc_manual";
   try{
@@ -3076,6 +3151,13 @@ async function placeCC(r,c,isRight=false){
 }
 
 async function placeRes(r,c,isRight=false){
+  const snapped=snapPlacementCell(r,c);
+  if(!snapped) return;
+  [r,c]=snapped;
+  if(!isRight && !canPlaceOnTerrain(r,c)){
+    toast("⛔ Resource hanya bisa di terrain darat.");
+    return;
+  }
   const mirrored=$("res-mir").checked;
   const method=isRight?"remove_resource_manual":"place_resource_manual";
   try{
@@ -3236,7 +3318,8 @@ function buildPresets(){
     btn.onclick=()=>{
       const mode=document.getElementById("c-mir")?.value||"none";
       const n=S.gridSize||5;
-      S.grid=applyMirroringToGrid(scaleSeedGridToSize(p.g,n),mode);
+      const g=decodePresetSeed(p.seed,5);
+      S.grid=applyMirroringToGrid(scaleSeedGridToSize(g,n),mode);
       buildSeedGrid(); toast("Preset: "+p.label);
     };
     wrap.appendChild(btn);
@@ -3287,7 +3370,8 @@ function buildQPresets(){
     btn.onclick=()=>{
       const mode=document.getElementById("q-mir")?.value||"none";
       const n=S.qGridSize||5;
-      QG.grid=applyMirroringToGrid(scaleSeedGridToSize(p.g,n),mode);
+      const g=decodePresetSeed(p.seed,5);
+      QG.grid=applyMirroringToGrid(scaleSeedGridToSize(g,n),mode);
       buildQSeedGrid(); toast("Preset: "+p.label);
     };
     wrap.appendChild(btn);
@@ -3377,6 +3461,7 @@ $("btn-next").onclick=()=>{
 
 async function generateCoastline({stayOnCurrentStep=false}={}){
   showLoad("Generating coastline…");
+  const viewportState=captureViewportState();
   const pattern=iv("c-ts");
   await loadTilesets(pattern);
   try{
@@ -3394,6 +3479,7 @@ async function generateCoastline({stayOnCurrentStep=false}={}){
     hideLoad();
     if(res.frames&&res.frames.length){ playAnimation(res.frames); toast("Coastline generating…⚡") }
     else{ redraw(); toast("✅ Coastline siap!") }
+    restoreViewportState(viewportState);
     if(!stayOnCurrentStep) goTo(1);
   }catch(e){ hideLoad(); toast("❌ "+e.message) }
 }
@@ -3406,6 +3492,7 @@ $("btn-recoast").onclick=async()=>{ await generateCoastline({stayOnCurrentStep:t
 
 async function generateHeightMap({stayOnCurrentStep=false}={}){
   showLoad("Generating height map…");
+  const viewportState=captureViewportState();
   try{
     const areaScale=(parseInt($("height-area")?.value||"5",10))/5;
     const res=await rpc("run_height_ocean",{
@@ -3416,6 +3503,7 @@ async function generateHeightMap({stayOnCurrentStep=false}={}){
     S.snap=res.snapshot; markDone(2); setStatus("Height map ✓");
     updateRegionImpactUI(res.snapshot, false);
     redraw(); toast("✅ Height map siap!");
+    restoreViewportState(viewportState);
   }catch(e){ toast("❌ "+e.message) }
   finally{ hideLoad() }
 }
@@ -3566,6 +3654,11 @@ function switchTab(tab){
   });
   const wp=$("wizard-page"); if(wp) wp.style.display=tab==="wizard"?"flex":"none";
   const qp=$("quick-page");  if(qp) qp.style.display=tab==="quick" ?"flex":"none";
+  if(tab==="quick" && !S._listeners.quickReady){
+    S._listeners.quickReady=true;
+    buildQPresets();
+    buildQSeedGrid();
+  }
 }
 
 function applyQuickZoom(){
@@ -4158,8 +4251,6 @@ function init(){
   buildPresets();
   buildSeedGrid();
   buildBrushSizes();
-  buildQPresets();
-  buildQSeedGrid();
   setupPinchZoom();
   setupQuickCanvasTouch();
   buildUnitTypeGrid();
