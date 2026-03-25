@@ -94,6 +94,7 @@ def _snapshot() -> Dict[str, Any]:
             "pattern": int(state.pattern),
             "num_height_levels": int(state.num_height_levels),
             "num_ocean_levels":  int(state.num_ocean_levels),
+            "height_region_scale": float(getattr(state, "height_region_scale", 1.0)),
             "num_command_centers": int(state.num_command_centers),
             "num_resource_pulls":  int(state.num_resource_pulls),
             "completed_step": int(state.completed_step),
@@ -137,6 +138,11 @@ def _apply_state_params(state, params):
     state.pattern   = int(params.get("tileset",   params.get("pattern",              state.pattern)))
     state.num_height_levels   = int(params.get("heightLevels",  params.get("num_height_levels",   state.num_height_levels)))
     state.num_ocean_levels    = int(params.get("oceanLevels",   params.get("num_ocean_levels",    state.num_ocean_levels)))
+    hrs = params.get("heightRegionScale", params.get("height_region_scale", getattr(state, "height_region_scale", 1.0)))
+    try:
+        state.height_region_scale = max(0.4, min(2.5, float(hrs)))
+    except Exception:
+        state.height_region_scale = 1.0
     state.num_command_centers = int(params.get("numPlayers",    params.get("num_command_centers", state.num_command_centers)))
     state.num_resource_pulls  = int(params.get("numResources",  params.get("num_resource_pulls",  state.num_resource_pulls)))
 
@@ -478,6 +484,11 @@ def run_height_ocean(params_json="{}"):
     params = _params(params_json)
     state.num_height_levels = int(params.get("heightLevels", params.get("num_height_levels", state.num_height_levels)))
     state.num_ocean_levels  = int(params.get("oceanLevels",  params.get("num_ocean_levels",  state.num_ocean_levels)))
+    hrs = params.get("heightRegionScale", params.get("height_region_scale", getattr(state, "height_region_scale", 1.0)))
+    try:
+        state.height_region_scale = max(0.4, min(2.5, float(hrs)))
+    except Exception:
+        state.height_region_scale = 1.0
     seed = params.get("seed")
     state.invalidate_from(WizardStep.HEIGHT_OCEAN)
     map_pipeline.run_height_ocean(state, seed=seed)
