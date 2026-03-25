@@ -427,14 +427,10 @@ def import_map():
             out.append((rr, cc))
         return out
 
-    if include_entities:
-        cc_positions.extend(_rescale_points(cc_obj_positions))
-        resource_positions.extend(_rescale_points(resource_obj_positions))
-        cc_positions = sorted(set((int(r), int(c)) for r, c in cc_positions))
-        resource_positions = sorted(set((int(r), int(c)) for r, c in resource_positions))
-    else:
-        cc_positions = []
-        resource_positions = []
+    cc_positions.extend(_rescale_points(cc_obj_positions))
+    resource_positions.extend(_rescale_points(resource_obj_positions))
+    cc_positions = sorted(set((int(r), int(c)) for r, c in cc_positions))
+    resource_positions = sorted(set((int(r), int(c)) for r, c in resource_positions))
 
     if include_entities:
         # Ensure matrices reflect extracted object-layer entities too.
