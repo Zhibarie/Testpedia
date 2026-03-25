@@ -314,21 +314,108 @@ def import_map():
     tilesets_out = _extract_embedded_tilesets(tree)
     target_h = max(40, min(2000, int(data.get("target_h", map_h))))
     target_w = max(40, min(2000, int(data.get("target_w", map_w))))
+    include_entities = bool(data.get("include_entities", True))
     height_map = np.array(height_map, dtype=np.int32)
     if target_h != map_h or target_w != map_w:
         ri = (np.arange(target_h)*map_h//target_h).astype(int)
         ci = (np.arange(target_w)*map_w//target_w).astype(int)
         height_map = height_map[np.ix_(ri, ci)]
     out_h, out_w = height_map.shape
+
+    units_matrix = np.zeros((map_h, map_w), dtype=np.int32)
+    items_matrix = np.zeros((map_h, map_w), dtype=np.int32)
+    if include_entities:
+        units_raw = _decode_first_matching_layer_gids(
+            tree,
+            ["units", "unit", "commandcenters", "command_center", "50pcommandcenter", "command center"],
+            map_w, map_h
+        )
+        items_raw = _decode_first_matching_layer_gids(
+            tree,
+            ["items", "item", "resources", "resource", "resource_pools", "resource pool"],
+            map_w, map_h
+        )
+        if units_raw is not None:
+            units_matrix = np.array(units_raw, dtype=np.int32).reshape(map_h, map_w)
+        if items_raw is not None:
+            items_matrix = np.array(items_raw, dtype=np.int32).reshape(map_h, map_w)
+        if target_h != map_h or target_w != map_w:
+            ri = (np.arange(target_h)*map_h//target_h).astype(int)
+            ci = (np.arange(target_w)*map_w//target_w).astype(int)
+            units_matrix = units_matrix[np.ix_(ri, ci)]
+            items_matrix = items_matrix[np.ix_(ri, ci)]
+
+    cc_positions = []
+    if include_entities and units_matrix.size:
+        # Collapse each connected unit blob into one CC coordinate and one unit tile.
+        collapsed_units = np.zeros(units_matrix.shape, dtype=np.int32)
+        seen_u = np.zeros(units_matrix.shape, dtype=np.uint8)
+        hh_u, ww_u = units_matrix.shape
+        for r in range(hh_u):
+            for c in range(ww_u):
+                if seen_u[r, c] or units_matrix[r, c] <= 0:
+                    continue
+                q = [(r, c)]
+                seen_u[r, c] = 1
+                comp = []
+                while q:
+                    cr, cc = q.pop()
+                    comp.append((cr, cc, int(units_matrix[cr, cc])))
+                    for nr, nc in (
+                        (cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1),
+                        (cr - 1, cc - 1), (cr - 1, cc + 1), (cr + 1, cc - 1), (cr + 1, cc + 1),
+                    ):
+                        if 0 <= nr < hh_u and 0 <= nc < ww_u and not seen_u[nr, nc] and units_matrix[nr, nc] > 0:
+                            seen_u[nr, nc] = 1
+                            q.append((nr, nc))
+                center_r = int(round(sum(p[0] for p in comp) / len(comp)))
+                center_c = int(round(sum(p[1] for p in comp) / len(comp)))
+                gid = max((p[2] for p in comp), default=0)
+                if gid <= 0:
+                    gid = 1
+                collapsed_units[center_r, center_c] = gid
+                cc_positions.append((center_r, center_c))
+        units_matrix = collapsed_units
+
+    resource_positions = []
+    if include_entities and items_matrix.size:
+        # Collapse each connected non-zero blob into one center coordinate.
+        seen = np.zeros(items_matrix.shape, dtype=np.uint8)
+        hh, ww = items_matrix.shape
+        for r in range(hh):
+            for c in range(ww):
+                if seen[r, c] or items_matrix[r, c] <= 0:
+                    continue
+                q = [(r, c)]
+                seen[r, c] = 1
+                comp = []
+                while q:
+                    cr, cc = q.pop()
+                    comp.append((cr, cc))
+                    for nr, nc in (
+                        (cr - 1, cc), (cr + 1, cc), (cr, cc - 1), (cr, cc + 1),
+                        (cr - 1, cc - 1), (cr - 1, cc + 1), (cr + 1, cc - 1), (cr + 1, cc + 1),
+                    ):
+                        if 0 <= nr < hh and 0 <= nc < ww and not seen[nr, nc] and items_matrix[nr, nc] > 0:
+                            seen[nr, nc] = 1
+                            q.append((nr, nc))
+                center_r = int(round(sum(p[0] for p in comp) / len(comp)))
+                center_c = int(round(sum(p[1] for p in comp) / len(comp)))
+                resource_positions.append((center_r, center_c))
+
     bridge.state.height = out_h; bridge.state.width = out_w
     bridge.state.coastline_height_map = height_map
     bridge.state.height_map = height_map
     bridge.state.randomized_matrix = (height_map > 0).astype(int)
     bridge.state.wall_matrix   = np.zeros((out_h, out_w), dtype=int)
     bridge.state.bridge_matrix = np.zeros((out_h, out_w), dtype=int)
-    bridge.state.items_matrix  = np.zeros((out_h, out_w), dtype=int)
-    bridge.state.units_matrix  = np.zeros((out_h, out_w), dtype=int)
-    bridge.state.completed_step = 2
+    bridge.state.items_matrix  = items_matrix.astype(int) if include_entities else np.zeros((out_h, out_w), dtype=int)
+    bridge.state.units_matrix  = units_matrix.astype(int) if include_entities else np.zeros((out_h, out_w), dtype=int)
+    bridge.state.cc_positions = cc_positions
+    bridge.state.resource_positions = resource_positions
+    bridge.state.cc_groups = [cc_positions[:]] if cc_positions else []
+    bridge.state.resource_groups = [resource_positions[:]] if resource_positions else []
+    bridge.state.completed_step = 0
     snap = bridge.rpc_call("get_state_snapshot")
     return jsonify({"ok": True, "width": out_w, "height": out_h,
                     "orig_width": map_w, "orig_height": map_h,
@@ -412,24 +499,106 @@ def _decode_layer_gids(root, layer_name: str, map_w: int, map_h: int):
     import gzip as gz_mod
     import struct
     import zlib
+
+    def _decode_data(data_el):
+        if data_el is None:
+            raise ValueError("Layer has no <data>")
+        enc = (data_el.get("encoding") or "").strip().lower()
+        comp = (data_el.get("compression") or "").strip().lower()
+
+        # CSV format
+        if enc == "csv":
+            raw = (data_el.text or "").replace("\n", ",").replace(" ", "")
+            vals = [v for v in raw.split(",") if v != ""]
+            if len(vals) < map_w * map_h:
+                raise ValueError(f"CSV data too short ({len(vals)} < {map_w*map_h})")
+            return tuple(int(v) for v in vals[:map_w * map_h])
+
+        # XML tile list (no encoding)
+        if enc == "":
+            tiles = data_el.findall("tile")
+            if tiles:
+                vals = [int(t.get("gid", 0)) for t in tiles]
+                if len(vals) < map_w * map_h:
+                    raise ValueError(f"XML tile data too short ({len(vals)} < {map_w*map_h})")
+                return tuple(vals[:map_w * map_h])
+
+        # Base64 (optionally compressed)
+        raw = (data_el.text or "").strip().replace("\n", "").replace(" ", "")
+        raw += "=" * (-len(raw) % 4)
+        compressed = base64.b64decode(raw)
+        decoded = None
+        if comp in ("gzip", "zlib", ""):
+            for fn in (gz_mod.decompress, zlib.decompress):
+                try:
+                    decoded = fn(compressed); break
+                except Exception:
+                    pass
+        if decoded is None:
+            decoded = compressed
+        return struct.unpack_from(f"<{map_w * map_h}I", decoded)
+
     for layer in root.findall("layer"):
         if layer.get("name") != layer_name:
             continue
         data_el = layer.find("data")
-        if data_el is None:
-            continue
-        raw = (data_el.text or "").strip().replace("\n", "").replace(" ", "")
-        raw += "=" * (-len(raw) % 4)
         try:
-            compressed = base64.b64decode(raw)
-            if compressed[:2] == b"\x1f\x8b":
-                decoded = gz_mod.decompress(compressed)
-            else:
-                decoded = zlib.decompress(compressed)
-            return struct.unpack_from(f"<{map_w * map_h}I", decoded)
+            return _decode_data(data_el)
         except Exception as exc:
             raise ValueError(f"{layer_name} decode failed: {exc}") from exc
     raise ValueError(f"No {layer_name} layer found")
+
+def _decode_first_matching_layer_gids(root, layer_names, map_w: int, map_h: int):
+    """Decode first layer matching any candidate names (case-insensitive)."""
+    if not layer_names:
+        return None
+    wanted = {str(n).strip().lower() for n in layer_names if str(n).strip()}
+    if not wanted:
+        return None
+    import gzip as gz_mod
+    import struct
+    import zlib
+    def _decode_data(data_el):
+        if data_el is None:
+            return None
+        enc = (data_el.get("encoding") or "").strip().lower()
+        comp = (data_el.get("compression") or "").strip().lower()
+        if enc == "csv":
+            raw = (data_el.text or "").replace("\n", ",").replace(" ", "")
+            vals = [v for v in raw.split(",") if v != ""]
+            if len(vals) >= map_w * map_h:
+                return tuple(int(v) for v in vals[:map_w * map_h])
+            return None
+        if enc == "":
+            tiles = data_el.findall("tile")
+            if tiles and len(tiles) >= map_w * map_h:
+                return tuple(int(t.get("gid", 0)) for t in tiles[:map_w * map_h])
+        raw = (data_el.text or "").strip().replace("\n", "").replace(" ", "")
+        raw += "=" * (-len(raw) % 4)
+        compressed = base64.b64decode(raw)
+        decoded = None
+        if comp in ("gzip", "zlib", ""):
+            for fn in (gz_mod.decompress, zlib.decompress):
+                try:
+                    decoded = fn(compressed); break
+                except Exception:
+                    pass
+        if decoded is None:
+            decoded = compressed
+        return struct.unpack_from(f"<{map_w * map_h}I", decoded)
+
+    for layer in root.findall("layer"):
+        lname = (layer.get("name") or "").strip().lower()
+        if lname not in wanted:
+            continue
+        data_el = layer.find("data")
+        try:
+            decoded = _decode_data(data_el)
+            if decoded is not None:
+                return decoded
+        except Exception:
+            continue
+    return None
 
 def _extract_embedded_tilesets(root):
     name_map = {

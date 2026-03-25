@@ -20,6 +20,7 @@ class WizardState:
     pattern: int = 1
     num_height_levels: int = 7
     num_ocean_levels: int = 3
+    height_region_scale: float = 1.0
     num_command_centers: int = 4
     num_resource_pulls: int = 12
     output_path: str = ""
