@@ -1137,6 +1137,7 @@ footer .btn { flex: 1; min-height: 44px; }
       <div class="card">
         <h2>2 · Hill / Bridge Drawing</h2>
         <p>Gambar bukit, dinding, atau jembatan. Opsional.</p>
+        <button class="btn btn-yellow" id="btn-recoast">🔁 Regenerate Coastline</button>
 
         <div class="mode-tabs">
           <button class="mode-tab active" id="tab-brush"  onclick="setHillMode('brush')">🖌 Brush</button>
@@ -1252,6 +1253,7 @@ footer .btn { flex: 1; min-height: 44px; }
       <div class="card">
         <h2>4 · Command Center</h2>
         <p>Tempatkan CC untuk setiap pemain. Tap di peta untuk manual.</p>
+        <button class="btn btn-yellow" id="btn-reheight">🔁 Regenerate Height</button>
         <div class="range-row">
           <div class="range-header"><span>Jumlah Pemain</span><span class="range-val" id="cv">4</span></div>
           <input type="range" id="cc-num" min="2" max="10" value="4" oninput="cv.textContent=this.value">
@@ -3276,8 +3278,7 @@ $("btn-next").onclick=()=>{
 //  STEP ACTIONS
 // ═══════════════════════════════════════════════════════════
 
-// STEP 0 — Coastline
-$("btn-coast").onclick=async()=>{
+async function generateCoastline({stayOnCurrentStep=false}={}){
   showLoad("Generating coastline…");
   const pattern=iv("c-ts");
   await loadTilesets(pattern);
@@ -3290,18 +3291,23 @@ $("btn-coast").onclick=async()=>{
       shoreline_smoothness: smooth/9.0,
     });
     S.snap=res.snapshot;
-    markDone(0); setStatus("Coastline ✓");
+    S.completed = Math.max(-1, parseInt(res.snapshot?.meta?.completed_step ?? 0, 10));
+    updateStepUI();
+    setStatus("Coastline ✓");
     hideLoad();
     if(res.frames&&res.frames.length){ playAnimation(res.frames); toast("Coastline generating…⚡") }
     else{ redraw(); toast("✅ Coastline siap!") }
-    goTo(1);
+    if(!stayOnCurrentStep) goTo(1);
   }catch(e){ hideLoad(); toast("❌ "+e.message) }
-};
+}
+
+// STEP 0 — Coastline
+$("btn-coast").onclick=async()=>{ await generateCoastline({stayOnCurrentStep:false}); };
+$("btn-recoast").onclick=async()=>{ await generateCoastline({stayOnCurrentStep:true}); };
 
 // STEP 1 — (Hill drawing — handled by canvas events)
 
-// STEP 2 — Height
-$("btn-height").onclick=async()=>{
+async function generateHeightMap({stayOnCurrentStep=false}={}){
   showLoad("Generating height map…");
   try{
     const areaScale=(parseInt($("height-area")?.value||"5",10))/5;
@@ -3314,7 +3320,11 @@ $("btn-height").onclick=async()=>{
     redraw(); toast("✅ Height map siap!");
   }catch(e){ toast("❌ "+e.message) }
   finally{ hideLoad() }
-};
+}
+
+// STEP 2 — Height
+$("btn-height").onclick=async()=>{ await generateHeightMap({stayOnCurrentStep:false}); };
+$("btn-reheight").onclick=async()=>{ await generateHeightMap({stayOnCurrentStep:true}); };
 
 // STEP 3 — CC
 $("btn-cc-rand").onclick=async()=>{
