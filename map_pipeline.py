@@ -625,7 +625,8 @@ def run_place_cc_manual(state: WizardState, row, col, mirrored=True):
         return [], 0
     if state.wall_matrix is not None and state.wall_matrix[row, col] == 1:
         return [], 0
-    if height_map[row, col] <= 0:
+    # Height 0 is valid lowest-ground terrain; only negative values are water.
+    if height_map[row, col] < 0:
         return [], 0
     if state.units_matrix is not None and state.units_matrix[row, col] > 0:
         return [], 0
@@ -830,7 +831,8 @@ def run_place_resource_manual(state: WizardState, row, col, mirrored=True):
         return []
     if state.wall_matrix is not None and state.wall_matrix[row, col] == 1:
         return []
-    if height_map[row, col] <= 0:
+    # Height 0 is valid lowest-ground terrain; only negative values are water.
+    if height_map[row, col] < 0:
         return []
     if state.units_matrix is not None:
         cc_clearance = int(np.clip(np.ceil(4 * _local_region_penalty(state, row, col)), 4, 8))
