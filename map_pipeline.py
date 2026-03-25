@@ -22,6 +22,7 @@ from procedural_map_generator_functions import (
     mirror,
     scale_matrix,
     perlin,
+    generate_level,  # backward-compat for older height pipelines
     add_resource_pulls,
     add_command_centers,
     smooth_terrain_tiles,
@@ -340,69 +341,116 @@ def run_height_ocean(state: WizardState, seed=None, preview_cb=None):
     state.perlin_seed = seed
 
     height_map = state.coastline_height_map.copy()
-    # Use smoother, less noisy multi-scale noise to avoid fragmented micro-patches.
-    perlin_raw = perlin(height, width, octaves_num=7, seed=seed)
-    sigma = max(1.0, min(3.5, min(height, width) / 110.0))
-    perlin_soft = _gaussian_filter(perlin_raw, sigma=sigma, mode='nearest')
-    perlin_map = (0.42 * perlin_raw) + (0.58 * perlin_soft)
-    pmin, pmax = float(np.min(perlin_map)), float(np.max(perlin_map))
-    if pmax > pmin:
-        perlin_map = (perlin_map - pmin) / (pmax - pmin) - 0.5
-    state.perlin_map = perlin_map
-
     num_height_levels = state.num_height_levels
     num_ocean_levels = state.num_ocean_levels
+    # region_scale: slider 1-10 → 0.1-3.0 (sent by JS, bridge passes through).
+    # Behaviour:
+    #   Small (0.1) → tight bands, levels change quickly from coast inward (steep)
+    #   Large (3.0) → wide bands, levels spread slowly over large distances (gradual)
     region_scale = float(getattr(state, "height_region_scale", 1.0))
-    region_scale = max(0.4, min(2.5, region_scale))
+    region_scale = max(0.1, min(3.0, region_scale))
 
     land_mask = height_map >= 1
-    perlin_land = perlin_map[land_mask] if np.any(land_mask) else perlin_map.ravel()
-    perlin_change = 1 / num_height_levels
-    perlin_value = -0.5
-    for level in range(2, num_height_levels + 1):
-        perlin_value += perlin_change
-        # Quantile-guided thresholds produce larger, more consolidated regions.
-        q = max(0.0, min(1.0, 1.0 - ((level - 1) / max(1, num_height_levels))))
-        min_p = float(np.quantile(perlin_land, q))
-        min_dist_prev = max(2, int(round((2 + level * 0.55) * region_scale)))
-        height_map = generate_level(
-            height_map, perlin_map, "height", level=level,
-            min_perlin_value=max(perlin_value, min_p),
-            min_distance_to_prev_level=min_dist_prev,
-            min_distance_to_next_level=max(3, int(round(4 * region_scale)))
-        )
-        if preview_cb:
-            preview_cb(f"height_level_{level}", height_map.copy())
+    sea_mask = ~land_mask
 
-    perlin_change = 1 / num_ocean_levels
-    perlin_value = -0.5
-    for level in range(-1, -num_ocean_levels - 1, -1):
-        perlin_value += perlin_change
-        q = max(0.0, min(1.0, 0.35 + (abs(level) / max(1, num_ocean_levels)) * 0.5))
-        min_p = float(np.quantile(perlin_map.ravel(), q))
-        height_map = generate_level(
-            height_map, perlin_map, "ocean", level=level,
-            min_perlin_value=max(perlin_value, min_p),
-            min_distance_to_prev_level=max(2, int(round(3 * region_scale))),
-            min_distance_to_next_level=max(3, int(round(5 * region_scale)))
-        )
+    # ── Perlin noise (texture) ────────────────────────────────────────────────
+    # Sigma scales with region so large regions also have large-scale noise blobs.
+    base_sigma = min(height, width) / 80.0
+    perlin_sigma = max(0.5, base_sigma * region_scale * 2.5)
+    perlin_raw = perlin(height, width, octaves_num=5, seed=seed)
+    perlin_soft = _gaussian_filter(perlin_raw, sigma=perlin_sigma, mode='nearest')
+    pmin, pmax = float(np.min(perlin_soft)), float(np.max(perlin_soft))
+    noise01 = (perlin_soft - pmin) / (pmax - pmin) if pmax > pmin else np.zeros_like(perlin_soft)
+    state.perlin_map = noise01 - 0.5
+
+    # ── Distance fields ───────────────────────────────────────────────────────
+    # Key idea: clip land_dist to `band_tiles` before normalizing.
+    # band_tiles = how many tiles wide each level band is.
+    # Small region → few tiles per band → steep, cramped transitions.
+    # Large region → many tiles per band → gradual, wide transitions.
+    land_dist_raw = distance_transform_cdt(land_mask, metric='chessboard').astype(float)
+    sea_dist_raw  = distance_transform_cdt(sea_mask,  metric='chessboard').astype(float)
+
+    # band_tiles: at region=1.0 ≈ 8 tiles per level; scales linearly.
+    band_tiles = max(2.0, 8.0 * region_scale)
+
+    if np.any(land_mask):
+        # Clip then normalize so the score 0→1 spans exactly band_tiles*num_levels tiles.
+        clip_dist = band_tiles * num_height_levels
+        land_dist = np.clip(land_dist_raw, 0, clip_dist) / clip_dist
+    else:
+        land_dist = land_dist_raw
+
+    if np.any(sea_mask):
+        clip_dist = band_tiles * num_ocean_levels
+        sea_dist = np.clip(sea_dist_raw, 0, max(clip_dist, 1.0)) / max(clip_dist, 1.0)
+    else:
+        sea_dist = sea_dist_raw
+
+    # Noise adds organic variation; distance drives the broad level structure.
+    land_score = (0.65 * land_dist) + (0.35 * noise01)
+    sea_score  = (0.65 * sea_dist)  + (0.35 * (1.0 - noise01))
+
+    # Smooth land score so band edges are not pixelated.
+    scalar_sigma = max(0.5, perlin_sigma * 0.4)
+    land_score = _gaussian_filter(land_score, sigma=scalar_sigma, mode='nearest')
+
+    # Sea score: coastal zone only gets light smoothing; interior keeps raw perlin variation.
+    if np.any(sea_mask):
+        coast_radius = max(3, int(round(scalar_sigma * 1.5)))
+        coast_dist = distance_transform_cdt(sea_mask, metric='chessboard').astype(float)
+        coastal_zone = sea_mask & (coast_dist <= coast_radius)
+        if np.any(coastal_zone):
+            coast_sigma = max(0.6, scalar_sigma * 0.5)
+            sea_score_smooth = _gaussian_filter(sea_score, sigma=coast_sigma, mode='nearest')
+            blend = np.clip(1.0 - coast_dist / (coast_radius + 1), 0.0, 1.0)
+            sea_score = np.where(coastal_zone,
+                                 blend * sea_score_smooth + (1.0 - blend) * sea_score,
+                                 sea_score)
+
+    def _weighted_thresholds(vals, levels, tail_weight=0.45):
+        if levels <= 1:
+            return np.array([])
+        # Keep high levels present (not collapsing to tiny points) with controlled decay.
+        w = np.linspace(1.0, max(0.30, tail_weight), levels)
+        p = w / np.sum(w)
+        c = np.cumsum(p)[:-1]
+        return np.quantile(vals, c)
+
+    # Weighted quantization keeps level spread more even and avoids single-point apexes.
+    if np.any(land_mask):
+        thr = _weighted_thresholds(land_score[land_mask], num_height_levels, tail_weight=0.52)
+        idx = np.digitize(land_score[land_mask], thr, right=False) + 1
+        height_map[land_mask] = np.clip(idx, 1, num_height_levels)
+        if preview_cb:
+            preview_cb("height_quantized", height_map.copy())
+    if np.any(sea_mask) and num_ocean_levels > 0:
+        # Sea level numbering (matches terrain_levels tile mapping):
+        #   0  = shallowest water  (deep_water_water tileset)
+        #  -1  = deep water        (ocean_deep_water tileset)
+        # idx=1 (shallowest) → 0,  idx=2 → -1,  idx=3 → -2 …
+        thr = _weighted_thresholds(sea_score[sea_mask], num_ocean_levels, tail_weight=0.58)
+        idx = np.digitize(sea_score[sea_mask], thr, right=False) + 1
+        height_map[sea_mask] = -np.clip(idx - 1, 0, num_ocean_levels - 1)
         if preview_cb:
             preview_cb("ocean_quantized", height_map.copy())
 
-    # Consolidation pass: median/weighted smoothing while preserving sign (land vs sea).
-    for _ in range(max(2, int(round(2 + region_scale)))):
-        med = _median_filter(height_map, size=3, mode='nearest')
-        if np.any(land_mask):
-            blended_land = np.round(0.72 * height_map[land_mask] + 0.28 * med[land_mask]).astype(int)
-            height_map[land_mask] = np.clip(blended_land, 1, num_height_levels)
-        if np.any(sea_mask) and num_ocean_levels > 0:
-            sea_abs = np.abs(height_map[sea_mask]).astype(float)
-            sea_med_abs = np.abs(med[sea_mask]).astype(float)
-            blended_sea = np.round(0.72 * sea_abs + 0.28 * sea_med_abs).astype(int)
-            height_map[sea_mask] = -np.clip(blended_sea, 1, num_ocean_levels)
+    # Consolidation: median filter on land only, kernel size scales with region_scale.
+    # Small region → kernel 3 (keeps detail).  Large region → kernel up to 9 (merges patches).
+    # Water tiles are never touched here.
+    if np.any(land_mask):
+        kernel = int(round(3 + region_scale * 3.0))   # 3 … 9
+        kernel = kernel if kernel % 2 == 1 else kernel + 1  # must be odd
+        land_only = np.where(land_mask, height_map, 0)
+        med = _median_filter(land_only, size=kernel, mode='nearest')
+        blend_w = min(0.55, 0.15 + region_scale * 0.20)   # 0.15 … 0.55
+        height_map[land_mask] = np.clip(
+            np.round((1 - blend_w) * height_map[land_mask] + blend_w * med[land_mask]).astype(int),
+            1, num_height_levels
+        )
 
-    # Remove tiny fragmented spots for both land and ocean levels.
-    min_comp = max(8, int((height * width) * (0.0010 * region_scale)))
+    # Remove tiny land fragments; threshold also scales with region_scale.
+    min_comp = max(5, int((height * width) * (0.00015 + 0.00025 * region_scale)))
     for lvl in range(num_height_levels, 1, -1):
         comp_mask = height_map == lvl
         if not np.any(comp_mask):
@@ -412,35 +460,34 @@ def run_height_ocean(state: WizardState, seed=None, preview_cb=None):
             comp = labels == lab
             if int(np.sum(comp)) < min_comp:
                 height_map[comp] = lvl - 1
-    for lvl in range(-num_ocean_levels, -1):
-        comp_mask = height_map == lvl
-        if not np.any(comp_mask):
-            continue
-        labels, n = _label_segments(comp_mask)
-        for lab in range(1, n + 1):
-            comp = labels == lab
-            if int(np.sum(comp)) < min_comp:
-                height_map[comp] = lvl + 1
 
-    # Consolidation pass: reduce patchy speckles while preserving broad variation.
-    for _ in range(max(1, int(round(1 + region_scale)))):
-        med = _median_filter(height_map, size=3, mode='nearest')
-        land = height_map > 0
-        sea = ~land
-        height_map[land] = np.maximum(1, np.round(0.65 * height_map[land] + 0.35 * med[land])).astype(int)
-        height_map[sea] = np.minimum(0, np.round(0.70 * height_map[sea] + 0.30 * med[sea])).astype(int)
+    # ── Natural coastline enforcement (gradient, multi-tile) ────────────────────
+    # Both sides of the coastline are enforced with a smooth gradient so levels
+    # rise/fall gradually away from the waterline — no sudden jumps.
+    #
+    # Land side gradient (distance from water edge):
+    #   dist 1 → capped at 1,  dist 2 → capped at 2, … up to num_height_levels
+    # Sea side gradient (distance from land edge):
+    #   dist 1 → capped at 0,  dist 2 → capped at -1, … down to -num_ocean_levels+1
+    #
+    # The gradient depth scales with the number of levels so a map with more
+    # height/ocean levels still gets a proportionally wide transition zone.
 
-    # Merge very tiny islands of a level into neighboring lower level.
-    min_comp = max(6, int((height * width) * (0.0006 * region_scale)))
-    for lvl in range(num_height_levels, 1, -1):
-        comp_mask = height_map == lvl
-        if not np.any(comp_mask):
-            continue
-        labels, n = _label_segments(comp_mask)
-        for lab in range(1, n + 1):
-            comp = labels == lab
-            if int(np.sum(comp)) < min_comp:
-                height_map[comp] = lvl - 1
+    # Distance of every land tile from the nearest water tile, and vice-versa.
+    land_dist_from_sea  = distance_transform_cdt(land_mask,  metric='chessboard').astype(int)
+    sea_dist_from_land  = distance_transform_cdt(sea_mask,   metric='chessboard').astype(int)
+
+    # Land gradient: tile at dist d from water must be <= d (capped at num_height_levels)
+    if np.any(land_mask) and num_height_levels > 1:
+        grad_zone = land_mask & (land_dist_from_sea <= num_height_levels)
+        max_allowed = np.clip(land_dist_from_sea[grad_zone], 1, num_height_levels)
+        height_map[grad_zone] = np.minimum(height_map[grad_zone], max_allowed)
+
+    # Sea gradient: tile at dist d from land must be >= -(d-1)  i.e. 0, -1, -2 …
+    if np.any(sea_mask) and num_ocean_levels > 1:
+        grad_zone = sea_mask & (sea_dist_from_land <= num_ocean_levels)
+        min_allowed = -np.clip(sea_dist_from_land[grad_zone] - 1, 0, num_ocean_levels - 1)
+        height_map[grad_zone] = np.maximum(height_map[grad_zone], min_allowed)
 
     if state.wall_matrix is not None and np.any(state.wall_matrix == 1):
         height_map = _bias_terrain_near_walls(height_map, state.wall_matrix, num_height_levels)
