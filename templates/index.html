@@ -2021,20 +2021,23 @@ function renderBridgeFallback(ctx,mat,w,h,ts=1){
 // renderCCOverlay: draws CC boxes on canvas
 // coordTs = px/cell in canvas coordinate space (1 for main canvas, actual ts for thumbnails)
 // sizeTs  = display scale for box sizing (tileSize for main, same as coordTs for thumbnails)
-function renderCCOverlay(ctx, snap, w, h, coordTs, sizeTs){
+function renderCCOverlay(ctx, snap, w, h, coordTs, sizeTs, opts={}){
   sizeTs = (sizeTs !== undefined) ? sizeTs : coordTs;
   const positions = snap.cc_positions||[];
   if(!positions.length) return;
   const um=snap.matrices?.units_matrix;
   const umW=um?.shape?.[1]||w;
+  const minBoxPx = Math.max(6, Number(opts.minBoxPx ?? 6));
+  const minFontPx = Math.max(4, Number(opts.minFontPx ?? 4));
+  const strokeBoost = Math.max(0.6, Number(opts.strokeBoost ?? 1));
 
   // coordTs = px per tile in THIS canvas space.
   // For overlay (display res): coordTs=tileSize, so all sizes are real screen px.
   // For preview/zip renders: coordTs=renderTS.
   const dotDiam  = Math.max(2, coordTs * 1.5) * 2;  // dot diameter in canvas px
-  const boxSize  = Math.max(6, Math.round(dotDiam * 2.5));  // 2.5× dot
+  const boxSize  = Math.max(minBoxPx, Math.round(dotDiam * 2.5));  // 2.5× dot
   const radius   = Math.max(1, Math.round(boxSize * 0.28));
-  const fontSize = Math.max(4, Math.round(boxSize * 0.52));
+  const fontSize = Math.max(minFontPx, Math.round(boxSize * 0.52));
 
   ctx.save();
   for(const[r,c] of positions){
@@ -2090,7 +2093,7 @@ function renderCCOverlay(ctx, snap, w, h, coordTs, sizeTs){
     // Thin black halo (~20% font size) then fill — keeps number readable
     ctx.lineJoin="round";
     ctx.strokeStyle="rgba(0,0,0,0.95)";
-    ctx.lineWidth=Math.max(0.4, fontSize*0.22);
+    ctx.lineWidth=Math.max(0.4, fontSize*0.22*strokeBoost);
     ctx.strokeText(String(num), cx, cy);
     ctx.fillStyle=textColor;
     ctx.fillText(String(num), cx, cy);
@@ -3624,7 +3627,7 @@ async function showPreview(b64, snap, canvasEl){
     const savedTS=tileSize; tileSize=renderTS;
 
     // Unified map draw helper — uses ts-aware private helpers so scaling works correctly
-    function _drawMapAt(ctx, ts) {
+    function _drawMapAt(ctx, ts, ccOpts={}) {
       ctx.fillStyle="#020617"; ctx.fillRect(0,0,Math.round(mapW*ts),Math.round(mapH*ts));
       const canUseTiles=S.tilesetLoaded&&S.tileImgs.ground;
       if(s.matrices.id_matrix&&canUseTiles){
@@ -3641,7 +3644,7 @@ async function showPreview(b64, snap, canvasEl){
         else            renderBridgeFallback(ctx,s.matrices.bridge_matrix,mapW,mapH,ts);
       }
       if(s.resource_positions?.length) renderDots(ctx,s.resource_positions,RES_COLOR,ts);
-      if(s.cc_positions?.length) renderCCOverlay(ctx,s,mapW,mapH,ts);
+      if(s.cc_positions?.length) renderCCOverlay(ctx,s,mapW,mapH,ts,ts,ccOpts);
     }
 
     if(s) _drawMapAt(tc, renderTS);
@@ -3659,7 +3662,10 @@ async function showPreview(b64, snap, canvasEl){
     const zipCanvas=document.createElement("canvas");
     zipCanvas.width=zipW; zipCanvas.height=zipH;
     const zctx=zipCanvas.getContext("2d");
-    if(s) _drawMapAt(zctx, zipTS);
+    const zipCCOpts = (Math.max(mapW, mapH) >= 200)
+      ? { minBoxPx: 14, minFontPx: 10, strokeBoost: 1.25 }
+      : { minBoxPx: 10, minFontPx: 8, strokeBoost: 1.1 };
+    if(s) _drawMapAt(zctx, zipTS, zipCCOpts);
     tileSize=savedTS;
     prev._zipB64=zipCanvas.toDataURL("image/png").split(",")[1];
   }
