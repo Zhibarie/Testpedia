@@ -4,7 +4,7 @@ Jalankan: python app.py
 Buka di browser: http://localhost:5000
 """
 
-import os, json, base64, tempfile
+import os, json, base64, tempfile, copy
 import numpy as np
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -325,12 +325,12 @@ def import_map():
     units_matrix = np.zeros((map_h, map_w), dtype=np.int32)
     items_matrix = np.zeros((map_h, map_w), dtype=np.int32)
     if include_entities:
-        units_raw = _decode_first_matching_layer_gids(
+        units_raw = _decode_all_matching_layer_gids(
             tree,
             ["units", "unit", "commandcenters", "command_center", "50pcommandcenter", "command center"],
             map_w, map_h
         )
-        items_raw = _decode_first_matching_layer_gids(
+        items_raw = _decode_all_matching_layer_gids(
             tree,
             ["items", "item", "resources", "resource", "resource_pools", "resource pool"],
             map_w, map_h
@@ -346,6 +346,11 @@ def import_map():
             items_matrix = items_matrix[np.ix_(ri, ci)]
 
     cc_positions = []
+    cc_obj_positions = _extract_object_points(
+        tree,
+        ["cc", "command center", "commandcenter", "command_centers", "commandcenters", "units"],
+        map_w, map_h
+    )
     if include_entities and units_matrix.size:
         # Collapse each connected unit blob into one CC coordinate and one unit tile.
         collapsed_units = np.zeros(units_matrix.shape, dtype=np.int32)
@@ -402,6 +407,44 @@ def import_map():
                 center_r = int(round(sum(p[0] for p in comp) / len(comp)))
                 center_c = int(round(sum(p[1] for p in comp) / len(comp)))
                 resource_positions.append((center_r, center_c))
+
+    resource_obj_positions = _extract_object_points(
+        tree,
+        ["resource", "resources", "items", "resource pool", "resource_pools"],
+        map_w, map_h
+    )
+
+    # Merge object-layer entities with tile-layer entities, preserving map-resized coords.
+    def _rescale_points(points):
+        if not points:
+            return []
+        if target_h == map_h and target_w == map_w:
+            return [(int(r), int(c)) for r, c in points]
+        out = []
+        for r, c in points:
+            rr = int(np.clip(round((r + 0.5) * target_h / map_h - 0.5), 0, target_h - 1))
+            cc = int(np.clip(round((c + 0.5) * target_w / map_w - 0.5), 0, target_w - 1))
+            out.append((rr, cc))
+        return out
+
+    if include_entities:
+        cc_positions.extend(_rescale_points(cc_obj_positions))
+        resource_positions.extend(_rescale_points(resource_obj_positions))
+        cc_positions = sorted(set((int(r), int(c)) for r, c in cc_positions))
+        resource_positions = sorted(set((int(r), int(c)) for r, c in resource_positions))
+    else:
+        cc_positions = []
+        resource_positions = []
+
+    if include_entities:
+        # Ensure matrices reflect extracted object-layer entities too.
+        for r, c in cc_positions:
+            if 0 <= r < units_matrix.shape[0] and 0 <= c < units_matrix.shape[1] and units_matrix[r, c] <= 0:
+                units_matrix[r, c] = 101
+        for r, c in resource_positions:
+            if 0 <= r < items_matrix.shape[0] and 0 <= c < items_matrix.shape[1] and items_matrix[r, c] <= 0:
+                items_matrix[max(0, r - 1):min(items_matrix.shape[0], r + 2),
+                             max(0, c - 1):min(items_matrix.shape[1], c + 2)] = 1
 
     bridge.state.height = out_h; bridge.state.width = out_w
     bridge.state.coastline_height_map = height_map
@@ -599,6 +642,58 @@ def _decode_first_matching_layer_gids(root, layer_names, map_w: int, map_h: int)
         except Exception:
             continue
     return None
+
+
+def _decode_all_matching_layer_gids(root, layer_names, map_w: int, map_h: int):
+    """Decode and sum all matching tile layers (case-insensitive)."""
+    if not layer_names:
+        return None
+    wanted = {str(n).strip().lower() for n in layer_names if str(n).strip()}
+    if not wanted:
+        return None
+    layers = []
+    for layer in root.findall("layer"):
+        lname = (layer.get("name") or "").strip().lower()
+        if lname not in wanted:
+            continue
+        # Reuse parser logic by decoding this exact layer payload via temp root.
+        tmp_root = ET.Element("map")
+        tmp_root.append(copy.deepcopy(layer))
+        decoded = _decode_first_matching_layer_gids(tmp_root, [lname], map_w, map_h)
+        if decoded is not None:
+            layers.append(np.array(decoded, dtype=np.int32).reshape(map_h, map_w))
+    if not layers:
+        return None
+    merged = np.maximum.reduce(layers)
+    return tuple(merged.ravel().tolist())
+
+
+def _extract_object_points(root, layer_names, map_w: int, map_h: int):
+    """Read point/object positions from matching objectgroup names."""
+    wanted = {str(n).strip().lower() for n in (layer_names or []) if str(n).strip()}
+    if not wanted:
+        return []
+    pts = []
+    tw = int(root.get("tilewidth", 20) or 20)
+    th = int(root.get("tileheight", 20) or 20)
+    for og in root.findall("objectgroup"):
+        lname = (og.get("name") or "").strip().lower()
+        if lname not in wanted:
+            continue
+        for obj in og.findall("object"):
+            try:
+                x = float(obj.get("x", 0.0))
+                y = float(obj.get("y", 0.0))
+                w = float(obj.get("width", 0.0))
+                h = float(obj.get("height", 0.0))
+                cx = x + (w * 0.5 if w > 0 else tw * 0.5)
+                cy = y + (h * 0.5 if h > 0 else th * 0.5)
+                c = int(np.clip(round(cx / max(1, tw) - 0.5), 0, map_w - 1))
+                r = int(np.clip(round(cy / max(1, th) - 0.5), 0, map_h - 1))
+                pts.append((r, c))
+            except Exception:
+                continue
+    return pts
 
 def _extract_embedded_tilesets(root):
     name_map = {

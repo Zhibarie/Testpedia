@@ -91,6 +91,56 @@ def _clear_resource_pool(items_matrix, r, c):
     items_matrix[max(0, r - 1):min(h, r + 2), max(0, c - 1):min(w, c + 2)] = 0
 
 
+def _in_bounds(row, col, h, w):
+    return 0 <= int(row) < h and 0 <= int(col) < w
+
+
+def _scale_coord(src_idx, src_size, dst_size):
+    """Scale index between matrices using cell-center mapping (less edge bias)."""
+    if src_size <= 0 or dst_size <= 0:
+        return 0
+    ratio = (int(src_idx) + 0.5) * (dst_size / src_size) - 0.5
+    return int(np.clip(np.rint(ratio), 0, dst_size - 1))
+
+
+def _mirrored_canvas_positions(row, col, map_shape, seed_shape, mirroring):
+    """Map a click on canvas grid into mirrored map coordinates."""
+    h, w = map_shape
+    rm_h, rm_w = seed_shape
+    if not _in_bounds(row, col, h, w):
+        return [], (-1, -1)
+
+    rm_row = _scale_coord(row, h, rm_h)
+    rm_col = _scale_coord(col, w, rm_w)
+    mirrored_rm = _get_mirrored_positions(rm_row, rm_col, rm_h, rm_w, mirroring)
+
+    placed = []
+    seen = set()
+    for mr, mc in mirrored_rm:
+        sr = _scale_coord(mr, rm_h, h)
+        sc = _scale_coord(mc, rm_w, w)
+        key = (sr, sc)
+        if key in seen:
+            continue
+        seen.add(key)
+        placed.append(key)
+
+    return placed, (rm_row, rm_col)
+
+
+def _local_region_penalty(state, r, c):
+    """Return a local penalty factor (>=1) from slope + region scale."""
+    slope_map = getattr(state, "region_slope_map", None)
+    base = float(np.clip(getattr(state, "height_region_scale", 1.0), 0.1, 3.0))
+    if slope_map is None:
+        return 1.0 + (base - 1.0) * 0.2
+    h, w = slope_map.shape
+    if not _in_bounds(r, c, h, w):
+        return 1.0
+    sv = float(np.clip(slope_map[int(r), int(c)], 0.0, 2.0))
+    return 1.0 + (base - 1.0) * 0.35 + sv * 0.55
+
+
 def _stamp_approach_ramp(is_vertical, ec_r_min, ec_r_max, ec_c_left, ec_c_right,
                           H, W, read_hm, write_hm, approach_h, span_h, approach_depth,
                           write_id=None, approach_id=None):
@@ -387,9 +437,17 @@ def run_height_ocean(state: WizardState, seed=None, preview_cb=None):
     else:
         sea_dist = sea_dist_raw
 
-    # Noise adds organic variation; distance drives the broad level structure.
-    land_score = (0.65 * land_dist) + (0.35 * noise01)
-    sea_score  = (0.65 * sea_dist)  + (0.35 * (1.0 - noise01))
+    # Region parameter must feel impactful: increase distance dominance at higher region,
+    # and increase noise dominance at lower region.
+    region_alpha = float(np.clip((region_scale - 0.1) / (3.0 - 0.1), 0.0, 1.0))
+    land_dist_w = 0.45 + 0.45 * region_alpha
+    sea_dist_w  = 0.50 + 0.40 * region_alpha
+    land_noise_w = 1.0 - land_dist_w
+    sea_noise_w  = 1.0 - sea_dist_w
+
+    # Noise adds organic variation; distance drives broad level structure.
+    land_score = (land_dist_w * land_dist) + (land_noise_w * noise01)
+    sea_score  = (sea_dist_w * sea_dist)  + (sea_noise_w * (1.0 - noise01))
 
     # Smooth land score so band edges are not pixelated.
     scalar_sigma = max(0.5, perlin_sigma * 0.4)
@@ -494,6 +552,19 @@ def run_height_ocean(state: WizardState, seed=None, preview_cb=None):
         if preview_cb:
             preview_cb("wall_bias", height_map.copy())
 
+    # Region-derived slope map + metrics (used by placement + UI diagnostics).
+    gy, gx = np.gradient(height_map.astype(float))
+    slope_map = np.clip(np.hypot(gx, gy), 0.0, 2.0)
+    state.region_slope_map = slope_map.astype(np.float32)
+    land_vals = slope_map[land_mask] if np.any(land_mask) else slope_map.ravel()
+    state.region_metrics = {
+        "region_scale": float(region_scale),
+        "mean_slope": float(np.mean(land_vals) if land_vals.size else 0.0),
+        "p95_slope": float(np.quantile(land_vals, 0.95) if land_vals.size else 0.0),
+        "land_dist_weight": float(land_dist_w),
+        "band_tiles": float(band_tiles),
+    }
+
     state.height_map = height_map
     state.completed_step = max(state.completed_step, int(WizardStep.HEIGHT_OCEAN))
 
@@ -539,31 +610,33 @@ def run_place_cc_manual(state: WizardState, row, col, mirrored=True):
     randomized_matrix = state.randomized_matrix
     rm_h, rm_w = randomized_matrix.shape
 
-    rm_row = int(row * rm_h / h)
-    rm_col = int(col * rm_w / w)
-
-    if rm_row < 0 or rm_row >= rm_h or rm_col < 0 or rm_col >= rm_w:
+    row, col = int(row), int(col)
+    if not _in_bounds(row, col, h, w):
         return [], 0
+    placed, (rm_row, rm_col) = _mirrored_canvas_positions(
+        row, col, (h, w), (rm_h, rm_w), mirroring
+    )
     if randomized_matrix[rm_row, rm_col] != 1:
         return [], 0
     if state.wall_matrix is not None and state.wall_matrix[row, col] == 1:
         return [], 0
     if height_map[row, col] <= 0:
         return [], 0
+    if state.units_matrix is not None and state.units_matrix[row, col] > 0:
+        return [], 0
     if state.items_matrix is not None:
-        cc_clearance = 2
+        cc_clearance = int(np.clip(np.ceil(2 * _local_region_penalty(state, row, col)), 2, 5))
         y_min = max(0, row - cc_clearance); y_max = min(h, row + cc_clearance + 1)
         x_min = max(0, col - cc_clearance); x_max = min(w, col + cc_clearance + 1)
         if np.any(state.items_matrix[y_min:y_max, x_min:x_max] != 0):
             return [], 0
-
-    mirrored_rm = _get_mirrored_positions(rm_row, rm_col, rm_h, rm_w, mirroring)
-    scale_y = h / rm_h
-    scale_x = w / rm_w
-    placed = [
-        (min(int(mr * scale_y), h - 1), min(int(mc * scale_x), w - 1))
-        for mr, mc in mirrored_rm
-    ]
+    for pr, pc in placed:
+        if height_map[pr, pc] <= 0:
+            return [], 0
+        if state.wall_matrix is not None and state.wall_matrix[pr, pc] == 1:
+            return [], 0
+        if state.units_matrix is not None and state.units_matrix[pr, pc] > 0:
+            return [], 0
 
     if state.units_matrix is None:
         state.units_matrix = np.zeros((h, w), dtype=int)
@@ -738,11 +811,12 @@ def run_place_resource_manual(state: WizardState, row, col, mirrored=True):
     randomized_matrix = state.randomized_matrix
     rm_h, rm_w = randomized_matrix.shape
 
-    rm_row = int(row * rm_h / h)
-    rm_col = int(col * rm_w / w)
-
-    if rm_row < 0 or rm_row >= rm_h or rm_col < 0 or rm_col >= rm_w:
+    row, col = int(row), int(col)
+    if not _in_bounds(row, col, h, w):
         return []
+    mirrored_positions, (rm_row, rm_col) = _mirrored_canvas_positions(
+        row, col, (h, w), (rm_h, rm_w), mirroring
+    )
     if randomized_matrix[rm_row, rm_col] != 1:
         return []
     if state.wall_matrix is not None and state.wall_matrix[row, col] == 1:
@@ -750,27 +824,38 @@ def run_place_resource_manual(state: WizardState, row, col, mirrored=True):
     if height_map[row, col] <= 0:
         return []
     if state.units_matrix is not None:
-        cc_clearance = 4
+        cc_clearance = int(np.clip(np.ceil(4 * _local_region_penalty(state, row, col)), 4, 8))
         y_min = max(0, row - cc_clearance); y_max = min(h, row + cc_clearance + 1)
         x_min = max(0, col - cc_clearance); x_max = min(w, col + cc_clearance + 1)
         if np.any(state.units_matrix[y_min:y_max, x_min:x_max] > 0):
             return []
 
-    mirrored_rm = _get_mirrored_positions(rm_row, rm_col, rm_h, rm_w, mirroring)
-    scale_y = h / rm_h
-    scale_x = w / rm_w
-
     placed = []
-    for mr, mc in mirrored_rm:
-        sr = min(int(mr * scale_y), h - 1)
-        sc = min(int(mc * scale_x), w - 1)
+    for sr, sc in mirrored_positions:
+        if height_map[sr, sc] <= 0:
+            continue
+        if state.wall_matrix is not None and state.wall_matrix[sr, sc] == 1:
+            continue
         # Skip if too close to an already placed position in this mirror group
         if any(abs(pr - sr) <= 3 and abs(pc - sc) <= 3 for pr, pc in placed):
             continue
+        y_min = max(0, sr - 1); y_max = min(h, sr + 2)
+        x_min = max(0, sc - 1); x_max = min(w, sc + 2)
+        if state.items_matrix is not None and np.any(state.items_matrix[y_min:y_max, x_min:x_max] != 0):
+            continue
+        if state.units_matrix is not None:
+            cclr = int(np.clip(np.ceil(4 * _local_region_penalty(state, sr, sc)), 4, 8))
+            y_min2 = max(0, sr - cclr); y_max2 = min(h, sr + cclr + 1)
+            x_min2 = max(0, sc - cclr); x_max2 = min(w, sc + cclr + 1)
+            if np.any(state.units_matrix[y_min2:y_max2, x_min2:x_max2] > 0):
+                continue
         placed.append((sr, sc))
 
     if state.items_matrix is None:
         state.items_matrix = np.zeros((h, w), dtype=int)
+
+    if not placed:
+        return []
 
     for sr, sc in placed:
         if state.items_matrix[sr, sc] == 0:

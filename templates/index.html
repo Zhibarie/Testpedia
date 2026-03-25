@@ -174,6 +174,7 @@ header::after {
   position: relative;
   width: 100%;
   margin-inline: auto;
+  overflow: hidden;
 }
 
 /* Canvas: 1px/cell internally, CSS scales to fill container */
@@ -182,6 +183,7 @@ header::after {
   width: 100%;
   height: auto;
   image-rendering: pixelated;
+  transform: translateZ(0);
 }
 #map-canvas {
   cursor: crosshair;
@@ -579,8 +581,18 @@ footer .btn { flex: 1; min-height: 44px; }
   height: 28dvh;
   min-height: 110px;
   flex-shrink: 0;
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  touch-action: none;
 }
-#quick-canvas { display: block; image-rendering: pixelated; max-width: 100%; }
+#quick-canvas {
+  display: block;
+  image-rendering: pixelated;
+  max-width: none;
+  touch-action: none;
+  transform: translateZ(0);
+}
 #quick-toolbar {
   position: absolute;
   top: 8px;
@@ -910,6 +922,10 @@ footer .btn { flex: 1; min-height: 44px; }
 
   .card p {
     font-size: .76rem;
+  }
+
+  input, select, textarea, button {
+    font-size: 16px;
   }
 
   .ctrl-grid,
@@ -1244,6 +1260,9 @@ footer .btn { flex: 1; min-height: 44px; }
           <div class="range-header"><span>Konsolidasi Area</span><span class="range-val" id="hav">1.0×</span></div>
           <input type="range" id="height-area" min="2" max="12" value="5" oninput="hav.textContent=(this.value/5).toFixed(1)+'×'">
         </div>
+        <div id="height-region-impact" class="muted-note" style="font-size:.75rem;margin-top:6px">
+          Region impact: menunggu generate.
+        </div>
         <button class="btn btn-primary" id="btn-height">⛰️ Generate Height Map</button>
       </div>
     </div>
@@ -1556,6 +1575,9 @@ footer .btn { flex: 1; min-height: 44px; }
       <div class="range-row">
         <div class="range-header"><span>Konsolidasi Area</span><span class="range-val" id="qhav">1.0×</span></div>
         <input type="range" id="q-height-area" min="2" max="12" value="5" oninput="qhav.textContent=(this.value/5).toFixed(1)+'×'">
+      </div>
+      <div id="q-height-region-impact" class="muted-note" style="font-size:.75rem">
+        Region impact: menunggu generate.
       </div>
 
       <div class="progress-wrap">
@@ -1903,13 +1925,32 @@ function renderHeightMap(ctx,mat,w,h,arg5=false,arg6=1){
   const data=mat.data;
   const palette=isCoastline?COASTLINE_COLORS:HEIGHT_COLORS;
   const bm=S.snap?.matrices?.bridge_matrix?.data;
-  for(let r=0;r<h;r++){
-    for(let c=0;c<w;c++){
-      const v=data[r*w+c];
-      ctx.fillStyle=(bm && bm[r*w+c]) ? "#888" : (palette[String(v)]||"#333");
-      ctx.fillRect(Math.round(c*ts),Math.round(r*ts),Math.ceil(ts),Math.ceil(ts));
-    }
+
+  // Vectorized pixel render (then upscale) for high performance on large/mobile maps.
+  const px = new Uint8ClampedArray(w*h*4);
+  const colorCache={};
+  const rgb=(hex)=>{
+    const s=(hex||"#333").replace("#","");
+    const n=parseInt(s.length===3?s.split("").map(ch=>ch+ch).join(""):s,16);
+    return [(n>>16)&255,(n>>8)&255,n&255];
+  };
+  for(let i=0;i<w*h;i++){
+    const key=(bm && bm[i])?"__bridge__":String(data[i]);
+    if(!colorCache[key]) colorCache[key]=rgb(key==="__bridge__"?"#888":(palette[key]||"#333"));
+    const [r,g,b]=colorCache[key];
+    const j=i*4; px[j]=r; px[j+1]=g; px[j+2]=b; px[j+3]=255;
   }
+  const im = new ImageData(px, w, h);
+  if(ts===1){
+    ctx.putImageData(im,0,0);
+    return;
+  }
+  const buf=document.createElement("canvas");
+  buf.width=w; buf.height=h;
+  const bctx=buf.getContext("2d");
+  bctx.putImageData(im,0,0);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(buf,0,0,w,h,0,0,w*ts,h*ts);
 }
 
 function renderTileLayer(ctx,mat,w,h,key,isGround,ts=1){
@@ -2229,11 +2270,20 @@ function zoomReset(){
   if (w) { w.scrollLeft = 0; w.scrollTop = 0; }
   redraw();
 }
-window.addEventListener("resize", ()=>{
-  if(!S.snap) return;
-  if(S.zoomScale<=1.05) S.zoomScale=1;
-  redraw();
-});
+let _resizeRAF=0;
+function _onViewportResize(){
+  if(_resizeRAF) cancelAnimationFrame(_resizeRAF);
+  _resizeRAF=requestAnimationFrame(()=>{
+    _resizeRAF=0;
+    if(!S.snap) return;
+    if(S.zoomScale<=1.05) S.zoomScale=1;
+    if(S.qZoomScale<=1.02) S.qZoomScale=1;
+    redraw();
+    applyQuickZoom();
+  });
+}
+window.addEventListener("resize", _onViewportResize, {passive:true});
+window.addEventListener("orientationchange", _onViewportResize, {passive:true});
 
 // Pinch-to-zoom on mobile
 let _pinchDist=0;
@@ -2627,32 +2677,68 @@ function canvasXY(e){
   return [r, c, px, py];
 }
 
+function _eventPoint(e){
+  const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+  return { x: t?.clientX ?? 0, y: t?.clientY ?? 0 };
+}
+
+function bindTouchGestureHandlers(el, handlers){
+  if(!el) return;
+  let touching=false;
+  let lastCell=null;
+
+  el.addEventListener("touchstart",e=>{
+    if(e.touches.length===0) return;
+    e.preventDefault();
+    touching=true;
+    lastCell=null;
+    handlers.onStart?.(e);
+  },{passive:false});
+
+  el.addEventListener("touchmove",e=>{
+    if(!touching) return;
+    e.preventDefault();
+    handlers.onMove?.(e,lastCell,(cell)=>{ lastCell=cell; });
+  },{passive:false});
+
+  const end=(e)=>{
+    if(!touching) return;
+    e.preventDefault();
+    touching=false;
+    lastCell=null;
+    handlers.onEnd?.(e);
+  };
+  el.addEventListener("touchend",end,{passive:false});
+  el.addEventListener("touchcancel",end,{passive:false});
+}
+
 function setupCanvasEvents(){
   const cv=getCanvas();
 
-  cv.addEventListener("touchstart",e=>{
-    e.preventDefault();
+  bindTouchGestureHandlers(cv,{
+    onStart:(e)=>{
     const[r,c]=canvasXY(e);
     _drawing=true; _lastPts=[[r,c]];
     handleCanvasDown(r,c);
-  },{passive:false});
-
-  cv.addEventListener("touchmove",e=>{
-    e.preventDefault();
-    if(!_drawing) return;
-    const[r,c]=canvasXY(e);
-    const last=_lastPts[_lastPts.length-1];
-    if(last[0]!==r||last[1]!==c){ _lastPts.push([r,c]); handleCanvasMove(r,c) }
-  },{passive:false});
-
-  cv.addEventListener("touchend",e=>{
-    e.preventDefault();
-    _drawing=false;
-    if(_lastPts.length>0) flushBrushBatch();
-    if(_bridgeDrawing) flushBridgeStroke();
-    _bridgeDrawing=false;
-    _lastPts=[];
-  },{passive:false});
+    },
+    onMove:(e,last,setLast)=>{
+      if(!_drawing) return;
+      const[r,c]=canvasXY(e);
+      const prev=last||_lastPts[_lastPts.length-1];
+      if(!prev||prev[0]!==r||prev[1]!==c){
+        _lastPts.push([r,c]);
+        setLast([r,c]);
+        handleCanvasMove(r,c);
+      }
+    },
+    onEnd:()=>{
+      _drawing=false;
+      if(_lastPts.length>0) flushBrushBatch();
+      if(_bridgeDrawing) flushBridgeStroke();
+      _bridgeDrawing=false;
+      _lastPts=[];
+    }
+  });
 
   cv.addEventListener("mousedown",e=>{
     _drawing=true; _lastPts=[];
@@ -3325,9 +3411,21 @@ async function generateHeightMap({stayOnCurrentStep=false}={}){
       heightRegionScale: areaScale
     });
     S.snap=res.snapshot; markDone(2); setStatus("Height map ✓");
+    updateRegionImpactUI(res.snapshot, false);
     redraw(); toast("✅ Height map siap!");
   }catch(e){ toast("❌ "+e.message) }
   finally{ hideLoad() }
+}
+
+function updateRegionImpactUI(snap, isQuick=false){
+  const el=$(isQuick?"q-height-region-impact":"height-region-impact");
+  if(!el||!snap) return;
+  const m=snap.meta?.region_metrics||{};
+  const scale=Number(snap.meta?.height_region_scale||1).toFixed(2);
+  const mean=(Number(m.mean_slope||0)).toFixed(2);
+  const p95=(Number(m.p95_slope||0)).toFixed(2);
+  const bw=(Number(m.band_tiles||0)).toFixed(1);
+  el.innerHTML=`Region ${scale}× → band ${bw} tile/level · slope μ=${mean}, p95=${p95}`;
 }
 
 // STEP 2 — Height
@@ -3470,6 +3568,8 @@ function switchTab(tab){
 function applyQuickZoom(){
   const qc=$("quick-canvas");
   if(!qc) return;
+  qc.style.width=`${qc.width}px`;
+  qc.style.height=`${qc.height}px`;
   qc.style.transformOrigin="top left";
   qc.style.transform=`scale(${S.qZoomScale||1})`;
 }
@@ -3480,6 +3580,51 @@ function zoomQuick(factor){
 function zoomQuickReset(){
   S.qZoomScale=1;
   applyQuickZoom();
+}
+
+let _quickPinchDist=0;
+let _quickPanStart=null;
+function setupQuickCanvasTouch(){
+  const wrap=$("quick-canvas-wrap");
+  const canvas=$("quick-canvas");
+  if(!wrap||!canvas) return;
+
+  bindTouchGestureHandlers(canvas,{
+    onStart:(e)=>{
+      if(e.touches.length===2){
+        const a=e.touches[0], b=e.touches[1];
+        const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY;
+        _quickPinchDist=Math.hypot(dx,dy);
+        _quickPanStart=null;
+        return;
+      }
+      _quickPinchDist=0;
+      const p=_eventPoint(e);
+      _quickPanStart={x:p.x,y:p.y,left:wrap.scrollLeft,top:wrap.scrollTop};
+    },
+    onMove:(e)=>{
+      if(e.touches.length===2){
+        const a=e.touches[0], b=e.touches[1];
+        const dx=a.clientX-b.clientX, dy=a.clientY-b.clientY;
+        const d=Math.hypot(dx,dy);
+        if(_quickPinchDist>0){
+          const factor=d/_quickPinchDist;
+          S.qZoomScale=Math.max(0.5,Math.min(6,(S.qZoomScale||1)*factor));
+          applyQuickZoom();
+        }
+        _quickPinchDist=d;
+        return;
+      }
+      if(!_quickPanStart) return;
+      const p=_eventPoint(e);
+      wrap.scrollLeft=_quickPanStart.left-(p.x-_quickPanStart.x);
+      wrap.scrollTop=_quickPanStart.top-(p.y-_quickPanStart.y);
+    },
+    onEnd:()=>{
+      _quickPanStart=null;
+      _quickPinchDist=0;
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3526,6 +3671,7 @@ $("btn-quick-gen").onclick=async()=>{
       oceanLevels:3,
       heightRegionScale:qAreaScale
     });
+    updateRegionImpactUI(h.snapshot, true);
     renderQuickCanvas(qCanvas,qCtx,h.snapshot,"height");
 
     // 5. CC
@@ -4012,6 +4158,7 @@ function init(){
   buildQPresets();
   buildQSeedGrid();
   setupPinchZoom();
+  setupQuickCanvasTouch();
   buildUnitTypeGrid();
   renderUnitDeclarations();
 
@@ -4054,7 +4201,7 @@ function init(){
   updateStepUI();
   // Init state from server
   rpc("get_state_snapshot").then(r=>{
-    S.snap=r.snapshot; setStatus("Siap"); redraw();
+    S.snap=r.snapshot; updateRegionImpactUI(S.snap,false); updateRegionImpactUI(S.snap,true); setStatus("Siap"); redraw();
     // Auto-load bridge tilesets from registry on startup
     _loadBridgeTsFromRegistry().catch(e=>console.warn('bridge init:', e));
   }).catch(()=>setStatus("Siap"));
@@ -4140,6 +4287,7 @@ function init(){
       const json=await res.json();
       if(!json.ok) throw new Error(json.error||"Import failed");
       S.snap=json.snapshot;
+      updateRegionImpactUI(S.snap,false); updateRegionImpactUI(S.snap,true);
 
       // Load embedded tilesets if map has them
       if(json.has_tilesets&&json.tilesets){
@@ -4198,6 +4346,7 @@ function init(){
       const json=await res.json();
       if(!json.ok) throw new Error(json.error||"Import failed");
       S.snap=json.snapshot;
+      updateRegionImpactUI(S.snap,false); updateRegionImpactUI(S.snap,true);
 
       // Keep editor dimensions synced with imported output size.
       $("c-h").value=json.height; $("c-w").value=json.width;
