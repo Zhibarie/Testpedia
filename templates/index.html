@@ -1747,7 +1747,7 @@ const S = {
   animTimer:null, animFrames:[], animIdx:0,
   quickTmx:null,
   placeMode:"unit",   // "unit" | "item"  — active sub-mode for step 5
-  _listeners:{canvas:false,pinch:false,quickReady:false,zoom:false,qzoom:false},
+  _listeners:{canvas:false,pinch:false,quickReady:false},
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -2302,12 +2302,10 @@ function drawPolygonOverlay(){
 //  ZOOM
 // ═══════════════════════════════════════════════════════════
 function zoom(factor){
-  if(!Number.isFinite(factor) || factor<=0) return;
   const now=performance.now();
   if(now<_zoomBusyUntil) return;
-  _zoomBusyUntil=now+55;
-  const clamped=Math.max(0.75, Math.min(1.25, factor));
-  S.zoomScale = Math.max(0.5, Math.min(8, S.zoomScale * clamped));
+  _zoomBusyUntil=now+70;
+  S.zoomScale = Math.max(0.5, Math.min(8, S.zoomScale * factor));
   redraw();
 }
 function zoomReset(){
@@ -2379,9 +2377,7 @@ function setupPinchZoom(){
       const d=Math.sqrt(dx*dx+dy*dy);
       if(_pinchDist>0){
         const factor=d/_pinchDist;
-        if(Math.abs(factor-1) >= 0.02){
-          zoom(factor);
-        }
+        zoom(factor);
       }
       _pinchDist=d;
     }
@@ -2391,6 +2387,35 @@ function setupPinchZoom(){
   wrap.addEventListener("gesturestart",e=>e.preventDefault(),{passive:false});
   wrap.addEventListener("gesturechange",e=>e.preventDefault(),{passive:false});
   wrap.addEventListener("dblclick",e=>e.preventDefault(),{passive:false});
+}
+
+function captureViewportState(){
+  const wrap=$("canvas-wrap");
+  const mapC=$("map-container");
+  return {
+    zoom:S.zoomScale,
+    left:wrap?.scrollLeft||0,
+    top:wrap?.scrollTop||0,
+    width:mapC?.clientWidth||0,
+    height:mapC?.clientHeight||0,
+  };
+}
+
+function restoreViewportState(state){
+  if(!state) return;
+  const wrap=$("canvas-wrap");
+  const mapC=$("map-container");
+  S.zoomScale=Math.max(0.5, Math.min(8, Number(state.zoom)||1));
+  redraw();
+  requestAnimationFrame(()=>{
+    if(!wrap) return;
+    const w0=Math.max(1, Number(state.width)||1);
+    const h0=Math.max(1, Number(state.height)||1);
+    const w1=Math.max(1, mapC?.clientWidth||w0);
+    const h1=Math.max(1, mapC?.clientHeight||h0);
+    wrap.scrollLeft=Math.max(0, Math.round((Number(state.left)||0)*(w1/w0)));
+    wrap.scrollTop=Math.max(0, Math.round((Number(state.top)||0)*(h1/h0)));
+  });
 }
 
 function captureViewportState(){
@@ -2804,28 +2829,7 @@ function canPlaceOnTerrain(r,c){
   const hm=S.snap?.matrices?.height_map;
   if(!hm?.data||!hm?.shape) return true;
   const w=hm.shape[1];
-  // Height 0 is still ground (lowest land band); only negative values are water.
-  return Number(hm.data[r*w+c])>=0;
-}
-
-function verifyUIButtonBindings(){
-  const buttons=[...document.querySelectorAll("button")];
-  let missing=0;
-  for(const btn of buttons){
-    if(btn.disabled) continue;
-    const hasInline=typeof btn.onclick==="function";
-    const hasDataAction=btn.hasAttribute("data-zoom-action")||btn.hasAttribute("data-qzoom-action");
-    const hasKnownId=!!btn.id;
-    if(!hasInline && !hasDataAction && !hasKnownId){
-      missing++;
-      btn.dataset.unbound="1";
-    }
-  }
-  if(missing){
-    console.warn(`[ui-check] ${missing} button(s) have no explicit handler/id; check wiring.`);
-  }else{
-    console.info("[ui-check] button wiring check passed.");
-  }
+  return Number(hm.data[r*w+c])>0;
 }
 
 function bindTouchGestureHandlers(el, handlers){
@@ -4348,7 +4352,6 @@ function init(){
   buildPresets();
   buildSeedGrid();
   buildBrushSizes();
-  setupZoomControls();
   setupPinchZoom();
   setupQuickCanvasTouch();
   verifyUIButtonBindings();

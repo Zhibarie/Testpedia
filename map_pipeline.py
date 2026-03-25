@@ -641,7 +641,7 @@ def run_place_cc_manual(state: WizardState, row, col, mirrored=True):
         pc_rm = _scale_coord(pc, w, rm_w)
         if randomized_matrix[pr_rm, pc_rm] != 1:
             return [], 0
-        if height_map[pr, pc] < 0:
+        if height_map[pr, pc] <= 0:
             return [], 0
         if state.wall_matrix is not None and state.wall_matrix[pr, pc] == 1:
             return [], 0
@@ -847,7 +847,7 @@ def run_place_resource_manual(state: WizardState, row, col, mirrored=True):
         sc_rm = _scale_coord(sc, w, rm_w)
         if randomized_matrix[sr_rm, sc_rm] != 1:
             continue
-        if height_map[sr, sc] < 0:
+        if height_map[sr, sc] <= 0:
             continue
         if state.wall_matrix is not None and state.wall_matrix[sr, sc] == 1:
             continue
