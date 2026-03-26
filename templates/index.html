@@ -2806,8 +2806,8 @@ function canvasXY(e){
   const c = Math.max(0, Math.min(mapW-1, Math.round((dx / ts) - 0.5)));
   const r = Math.max(0, Math.min(mapH-1, Math.round((dy / ts) - 0.5)));
   // Internal coords for direct ctx usage
-  const px = Math.max(0, Math.min(mapW, dx / ts));
-  const py = Math.max(0, Math.min(mapH, dy / ts));
+  const px = Math.max(0, Math.min(mapW, dx / tsX));
+  const py = Math.max(0, Math.min(mapH, dy / tsY));
   return [r, c, px, py];
 }
 
@@ -4326,6 +4326,57 @@ function showImportMsg(msg,type){
   el.className="import-msg "+(type||""); el.style.display="";
 }
 
+let _inlineFallbackInstalled=false;
+function installInlineOnclickFallback(){
+  if(_inlineFallbackInstalled) return;
+  _inlineFallbackInstalled=true;
+  // Fallback for environments where inline onclick attrs are blocked/ignored.
+  document.addEventListener("click",(event)=>{
+    const el=event.target?.closest?.("[onclick]");
+    if(!el) return;
+    if(typeof el.onclick==="function") return; // native inline binding works
+    const code=el.getAttribute("onclick");
+    if(!code) return;
+    event.preventDefault();
+    try{
+      (new Function("event", code)).call(el, event);
+    }catch(err){
+      const msg = `onclick fallback error: ${err?.message || err}`;
+      setStatus(msg);
+      toast("⚠️ " + msg, 2800);
+    }
+  }, true);
+}
+
+function auditUIButtonBindings(){
+  const mustHave = [
+    "btn-zoom-in","btn-zoom-out","btn-zoom-reset",
+    "btn-qzoom-in","btn-qzoom-out","btn-qzoom-reset",
+    "btn-back","btn-next","btn-coast","btn-height",
+    "btn-cc-rand","btn-res-rand","btn-export","btn-newmap",
+  ];
+  const delegated = new Set(["btn-preview-dl","btn-do-import-terrain","btn-import-terrain","btn-import-all"]);
+  const missing = [];
+  for(const id of mustHave){
+    const el=$(id);
+    if(!el){ missing.push(`${id} (missing element)`); continue; }
+    const hasInline = !!el.getAttribute("onclick") || typeof el.onclick==="function";
+    const hasBound = _boundClickIds.has(id);
+    const isDelegated = delegated.has(id);
+    if(!hasInline && !hasBound && !isDelegated){
+      missing.push(`${id} (no click binding)`);
+    }
+  }
+  if(missing.length){
+    const msg = `[ui-audit] unresolved: ${missing.join(", ")}`;
+    setStatus(msg);
+    toast("⚠️ UI audit menemukan tombol belum terikat", 2600);
+  }else{
+    setStatus("[ui-audit] critical button bindings OK");
+  }
+  return missing;
+}
+
 // ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
@@ -4349,6 +4400,8 @@ function updateSizeWarn(h, w, warnId){
 }
 
 function init(){
+  installInlineOnclickFallback();
+  setupZoomControls();
   buildPresets();
   buildSeedGrid();
   buildBrushSizes();
